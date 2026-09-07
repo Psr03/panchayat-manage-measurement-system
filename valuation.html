@@ -1,1 +1,628 @@
+<!-- valuation.html -->
+<div class="page" id="page-valuation">
+    <div class="work-detail-tabs">
+        <button class="wd-tab-btn active" data-tab="val-estimate" onclick="switchValuationTab('val-estimate')"><i class="ri-calculator-line"></i> Estimate Data</button>
+        <button class="wd-tab-btn" data-tab="val-work" onclick="switchValuationTab('val-work')"><i class="ri-file-chart-line"></i> Work Valuation</button>
+        <button class="wd-tab-btn" data-tab="val-abstract" onclick="switchValuationTab('val-abstract')"><i class="ri-file-list-2-line"></i> Valuation Abstract</button>
+        <button class="wd-tab-btn" data-tab="val-boq" onclick="switchValuationTab('val-boq')"><i class="ri-file-table-line"></i> Valuation BOQ</button>
+    </div>
 
+    <div class="estimate-header">
+        <div class="estimate-info">
+            <div class="estimate-meta">
+                <span class="meta-item"><strong>SOR :</strong> <span id="valDisplaySor">--</span></span>
+                <span class="meta-item"><strong>Created By :</strong> <span id="valDisplayEngineer">--</span></span>
+            </div>
+            <h2 class="estimate-title" style="text-align:center; text-decoration: underline;">Work Valuation</h2>
+            <div class="estimate-work-info">
+                <p style="text-align:center;"><strong>Name of Work :</strong> <span id="valDisplayWorkName">--</span></p>
+                <p style="text-align:center; text-decoration: underline;"><strong>GRAM PANCHAYAT :</strong> <span id="valDisplayPanchayat">--</span>, <strong>JANPAD PANCHAYAT :</strong> <span id="valDisplayJanpad">--</span></p>
+            </div>
+        </div>
+        <div class="estimate-actions" id="valActionBtns" style="display: none;">
+            <button class="btn btn-outline" id="btnLoadEstimateVal" onclick="loadEstimateIntoValuationTab()"><i class="ri-download-line"></i> Load Estimate</button>
+            <button class="btn btn-outline" onclick="openValuationLoadTemplateModal()"><i class="ri-layout-4-line"></i> Load Template</button>
+            <button class="btn btn-primary" onclick="openValuationHeadingModal()"><i class="ri-add-line"></i> Add Section</button>
+            <button class="btn btn-success" onclick="saveValuation()"><i class="ri-save-line"></i> Save Valuation</button>
+            <button class="btn btn-secondary" onclick="navigateTo('savedWorks')"><i class="ri-arrow-left-line"></i> Back</button>
+        </div>
+    </div>
+
+    
+
+    <!-- Tab 1: Estimate Data (Read Only) -->
+    <div class="wd-tab-content active" id="wdTabValEstimate">
+        <div class="card">
+            <div class="card-header"><h3>Original Estimate Data</h3></div>
+            <div class="card-body">
+                <div id="valuationEstimateDataContainer" class="read-only-estimate">
+                    <p style="text-align:center; color:var(--text-muted);">Loading original estimate...</p>
+                </div>
+                <div class="summary-card" style="margin-top:20px;">
+                    <div class="summary-header print-hide"><h3><i class="ri-calculator-line"></i> Estimate Summary</h3></div>
+                    <div class="summary-table-container">
+                        <table class="summary-table">
+                            <thead class="print-hide"><tr><th>Description</th><th style="width:150px;">Amount (&#8377;)</th></tr></thead>
+                            <tbody id="valEstSummaryBody">
+                                <!-- JS से पूरी समरी यहाँ लोड होगी -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 2: Work Valuation -->
+    <div class="wd-tab-content" id="wdTabValWork">
+        <div id="valuationSectionsContainer"></div>
+        <div class="summary-card">
+            <div class="summary-header print-hide"><h3><i class="ri-calculator-line"></i> Valuation Summary</h3><button class="btn btn-sm btn-outline" onclick="showHiddenValuationRows()"><i class="ri-eye-line"></i> Show Hidden</button></div>
+            <div class="summary-table-container">
+                <table class="summary-table" id="valSummaryTable">
+                    <thead class="print-hide"><tr><th>Description</th><th style="width:150px;">Amount (&#8377;)</th><th style="width:80px;">Action</th></tr></thead>
+                    <tbody>
+                        <tr class="summary-row" data-type="cib"><td contenteditable="true" style="text-align:right;">Citizen Information Board</td><td contenteditable="true" class="summary-amount" id="valCibAmt" oninput="calcValuation()">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row" data-type="extra"><td contenteditable="true" style="text-align:right;">Add Lumpsum Extra Work Amount</td><td contenteditable="true" class="summary-amount" id="valExtraWorkAmt" oninput="calcValuation()">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row summary-subtotal" data-type="subtotal"><td style="text-align:right;">Sub Total Amount</td><td class="summary-amount" id="valSubTotalAmt">0.00</td><td class="print-hide"></td></tr>
+                        <tr class="summary-row res-only" data-type="electrification"><td contenteditable="true" id="valElecLabel" style="text-align:right;" oninput="calcValuation()">Add 0 % for Electrification</td><td class="summary-amount" id="valElecAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row res-only" data-type="sanitary"><td contenteditable="true" id="valSaniLabel" style="text-align:right;" oninput="calcValuation()">Add 0 % for Sanitary Fitting</td><td class="summary-amount" id="valSaniAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row res-only summary-totalamt" data-type="totalamt"><td style="text-align:right;">Total Amount</td><td class="summary-amount" id="valTotalAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row res-only" data-type="deduction"><td contenteditable="true" id="valDeductLabel" style="text-align:right;" oninput="calcValuation()">Deduction Contractor Profit 10%</td><td class="summary-amount" id="valDeductionAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row res-only" data-type="gst"><td contenteditable="true" id="valGstLabel" style="text-align:right;" oninput="calcValuation()">Add G.S.T. Charge 18%</td><td class="summary-amount" id="valGstAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row res-only" data-type="contingency"><td contenteditable="true" id="valContLabel" style="text-align:right;" oninput="calcValuation()">Add Contingency Charge 0 %</td><td class="summary-amount" id="valContAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                        <tr class="summary-row summary-gross" data-type="gross"><td style="text-align:right;">Gross Total Amount</td><td class="summary-amount" id="valGrossTotalAmt">0.00</td><td class="print-hide"></td></tr>
+                        <tr class="summary-row" data-type="sayrs"><td style="text-align:right;">Say Rs. in Lakh</td><td class="summary-amount" style="text-align:center;" id="valSayRs">0.00</td><td class="print-hide"></td></tr>
+                        <tr class="summary-row summary-words" data-type="words-en"><td colspan="3" id="valAmountInEnglish">Amount in Words: zero rupees only.</td></tr>
+                        <tr class="summary-row summary-words" data-type="words-hi"><td colspan="3" id="valAmountInHindi">राशि शब्दों में: शून्य रुपये मात्र</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 3: Valuation Abstract -->
+    <div class="wd-tab-content" id="wdTabValAbstract">
+        <div class="card">
+            <div class="card-body">
+                <div class="report-doc-header"><h3>Valuation Abstract</h3></div>
+                <div class="table-responsive">
+                    <table class="data-table" id="valAbstractTable">
+                        <thead><tr><th>Sr No</th><th>Code</th><th>Description / Specification</th><th>Unit</th><th>Quantity</th><th>Rate (₹)</th><th>Amount (₹)</th></tr></thead>
+                        <tbody id="valAbstractTableBody"><tr><td colspan="7" class="empty-row">Switch to Valuation Abstract tab to view data.</td></tr></tbody>
+                        <tbody><tr style="background: var(--bg-tertiary); font-weight: 700;"><td colspan="6" style="text-align: right;">Total Valuation Cost:</td><td id="valAbstractTotal" style="text-align: right;">0.00</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 4: Valuation BOQ -->
+    <div class="wd-tab-content" id="wdTabValBOQ">
+        <div class="card">
+            <div class="card-body">
+                <div class="report-doc-header"><h3>Valuation BOQ</h3></div>
+                <div class="table-responsive">
+                    <table class="data-table" id="valBoqTable" style="min-width: 1200px;">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" style="width: 50px;">Sr No</th><th rowspan="2" style="min-width: 300px;">Description</th><th rowspan="2" style="width: 70px;">Qty</th><th rowspan="2" style="width: 60px;">Unit</th>
+                                <th colspan="3" style="text-align:center; border-bottom: 1px solid var(--border-light); min-width: 300px;">Metal (M³)</th><th rowspan="2" style="width: 100px;">Cement (Bag)</th><th rowspan="2" style="width: 100px;">Sand (M³)</th><th rowspan="2" style="width: 100px;">Brick (Nos)</th>
+                            </tr>
+                            <tr><th style="width: 100px;">40 MM</th><th style="width: 100px;">20 MM</th><th style="width: 100px;">10 MM</th></tr>
+                        </thead>
+                        <tbody id="valBoqTableBody"><tr><td colspan="12" class="empty-row">Switch to Valuation BOQ tab to view data.</td></tr></tbody>
+                        <tfoot id="valBoqTableFoot" style="display: none;"></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ====================== VALUATION SCRIPTS ======================
+var valSectionCounter = 0;
+
+function updateLoadEstimateBtnState() {
+    var btn = document.getElementById('btnLoadEstimateVal');
+    if (!btn) return;
+    var sections = document.querySelectorAll('#valuationSectionsContainer .heading-section');
+    if (sections.length > 0) {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+        btn.title = "Delete existing sections to reload estimate";
+    } else {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.title = "Load Estimate";
+    }
+}
+
+function switchValuationTab(tabName) {
+    document.querySelectorAll('#page-valuation .wd-tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+    document.querySelectorAll('#page-valuation .wd-tab-content').forEach(function(content) { content.classList.remove('active'); });
+    
+    var activeBtn = document.querySelector('#page-valuation .wd-tab-btn[data-tab="' + tabName + '"]');
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    // ✅ बटनों को शो/हाइड करने का लॉजिक
+    var actionBtns = document.getElementById('valActionBtns');
+    if (actionBtns) {
+        // 1. कंटेनर को हमेशा दिखाएं ताकि 'Back' बटन हर टैब पर दिखे
+        actionBtns.style.display = 'flex';
+        
+        // 2. 'Back' बटन (जिसमें btn-secondary क्लास है) को छोड़कर बाकी बटनों को चेक करें
+        var specificBtns = actionBtns.querySelectorAll('button:not(.btn-secondary)');
+        specificBtns.forEach(function(btn) {
+            // सिर्फ 'Work Valuation' (val-work) टैब पर ही बाकी बटन दिखेंगे, बाकी टैब्स पर छिप जाएंगे
+            btn.style.display = (tabName === 'val-work') ? 'inline-flex' : 'none';
+        });
+    }
+    
+    if (tabName === 'val-estimate') { document.getElementById('wdTabValEstimate').classList.add('active'); }
+    if (tabName === 'val-work') { document.getElementById('wdTabValWork').classList.add('active'); updateLoadEstimateBtnState(); }
+    if (tabName === 'val-abstract') { document.getElementById('wdTabValAbstract').classList.add('active'); generateValuationAbstractAndBOQ(); }
+    if (tabName === 'val-boq') { document.getElementById('wdTabValBOQ').classList.add('active'); generateValuationAbstractAndBOQ(); }
+}
+
+function openValuationPage(index) {
+    var work = allSavedWorks[index];
+    if (!work) { showToast("Work not found!", "error"); return; }
+    
+    currentEstimateWorkIndex = index;
+    var sorSelect = document.getElementById("sorSelect");
+    if (sorSelect) sorSelect.value = work.SOR; 
+    
+    document.getElementById('valDisplaySor').textContent = work.SOR || '--';
+    document.getElementById('valDisplayEngineer').textContent = work.Engineer || '--';
+    document.getElementById('valDisplayWorkName').textContent = work.Work || '--';
+    document.getElementById('valDisplayPanchayat').textContent = work.Panchayat || '--';
+    document.getElementById('valDisplayJanpad').textContent = work.Janpad || '--';
+    
+    document.getElementById('valuationSectionsContainer').innerHTML = '';
+    valSectionCounter = 0;
+    
+    // Load Original Estimate Data in Tab 1
+    var estStr = work['Estimate Data'];
+    var estContainer = document.getElementById('valuationEstimateDataContainer');
+    var summaryBody = document.getElementById('valEstSummaryBody');
+    
+    if (estContainer && summaryBody) {
+        estContainer.innerHTML = '<p style="text-align:center; color:var(--text-muted);">No original estimate found.</p>';
+        summaryBody.innerHTML = '';
+        
+        if (estStr && String(estStr).trim() !== '') {
+            try {
+                var ed = JSON.parse(estStr);
+                if (ed.sections && ed.sections.length > 0) {
+                    estContainer.innerHTML = '';
+                    ed.sections.forEach(function(sec) {
+                        var section = document.createElement("div"); section.className = "heading-section";
+                        section.innerHTML = '<div class="heading-header"><span class="heading-title">' + sec.name + '</span></div><div class="tables-container"></div>';
+                        estContainer.appendChild(section);
+                        var tc = section.querySelector(".tables-container");
+                        if (sec.specs && sec.specs.length > 0) { sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, work.SOR); }); }
+                    });
+                    estContainer.classList.add('read-only-estimate');
+                    estContainer.querySelectorAll('[contenteditable="true"]').forEach(function(el) { el.setAttribute('contenteditable', 'false'); });
+                    
+                    // ✅ टेबल्स बनने के बाद उनकी मात्रा (Qty) और समरी अपडेट करें
+                    calculateEstimateDataContainer(estContainer);
+                }
+            } catch(e) { console.error(e); }
+        }
+    }
+    
+    // Load Valuation Data in Tab 2
+    loadEstimateToValuation();
+    
+    switchValuationTab('val-work');
+    navigateTo('valuation');
+}
+
+function calculateEstimateDataContainer(container) {
+    var gt1 = 0;
+    container.querySelectorAll(".measurement-table").forEach(function(table) {
+        var tq = 0;
+        table.querySelectorAll("tbody tr").forEach(function(row) {
+            if (row.classList.contains("spec-row") || row.classList.contains("deduction-title") || row.querySelector("th")) return;
+            
+            var nc = row.querySelector(".no");
+            var qc = row.querySelector(".quantity");
+            if (!nc || !qc) return;
+            
+            var noVal = nc.textContent.trim();
+            var no = noVal !== "" ? safeMathEval(noVal) : 1;
+            if (isNaN(no)) no = 0;
+            
+            var lenEl = row.querySelector(".length");
+            var len = lenEl && lenEl.textContent.trim() !== "" ? safeMathEval(lenEl.textContent.trim()) : 1;
+            if (isNaN(len)) len = 0;
+            
+            var brdEl = row.querySelector(".breadth");
+            var brd = brdEl && brdEl.textContent.trim() !== "" ? safeMathEval(brdEl.textContent.trim()) : 1;
+            if (isNaN(brd)) brd = 0;
+            
+            var hgtEl = row.querySelector(".height");
+            var hgt = hgtEl && hgtEl.textContent.trim() !== "" ? safeMathEval(hgtEl.textContent.trim()) : 1;
+            if (isNaN(hgt)) hgt = 0;
+            
+            var cfEl = row.querySelector(".cf");
+            var cf = cfEl && cfEl.textContent.trim() !== "" ? safeMathEval(cfEl.textContent.trim()) : 1;
+            if (isNaN(cf)) cf = 0;
+            
+            var q = no * len * brd * hgt * cf;
+            if (row.classList.contains("deduction-row")) q = -q;
+            qc.textContent = q.toFixed(2);
+            tq += q;
+        });
+        
+        var nq = table.querySelector(".netQty");
+        if (nq) nq.textContent = tq.toFixed(2);
+        
+        var r1r = table.querySelector(".rate1");
+        var r1 = r1r ? extractRate(r1r.textContent) : 0;
+        var a1 = tq * r1;
+        var a1c = table.querySelector(".amt1");
+        if (a1c) a1c.textContent = a1.toFixed(2);
+        
+        gt1 += a1;
+    });
+    
+    // ✅ पूरी एस्टिमेट समरी यहाँ कैलकुलेट और रेंडर होगी
+    var work = allSavedWorks[currentEstimateWorkIndex];
+    var estStr = work['Estimate Data'];
+    var summaryBody = document.getElementById('valEstSummaryBody');
+    
+    if (estStr && summaryBody) {
+        try {
+            var ed = JSON.parse(estStr);
+            var cib = parseFloat(ed.summary.cib) || 0;
+            var extra = parseFloat(ed.summary.extraWork) || 0;
+            var sub = gt1 + cib + extra;
+            
+            function matchPct(label) { 
+                var m = String(label).match(/(\d+(\.\d+)?)\s*%/); 
+                return m ? parseFloat(m[1]) : 0; 
+            }
+            
+            var ep = matchPct(ed.summary.elecLabel);
+            var elecAmt = (sub * ep) / 100;
+            
+            var sp = matchPct(ed.summary.saniLabel);
+            var saniAmt = (sub * sp) / 100;
+            
+            var totalAmt = sub + elecAmt + saniAmt;
+            
+            var dp = matchPct(ed.summary.deductLabel);
+            var dedAmt = (totalAmt * dp) / 100;
+            
+            var gp = matchPct(ed.summary.gstLabel);
+            var gstAmt = ((totalAmt - dedAmt) * gp) / 100;
+            
+            var cp = matchPct(ed.summary.contLabel);
+            var contAmt = ((totalAmt - dedAmt) * cp) / 100;
+            
+            var gross = totalAmt - dedAmt + gstAmt + contAmt;
+            
+            var html = '';
+            if (cib > 0) html += '<tr class="summary-row"><td style="text-align:right;">Citizen Information Board</td><td class="summary-amount" style="text-align:right;">' + cib.toFixed(2) + '</td></tr>';
+            if (extra > 0) html += '<tr class="summary-row"><td style="text-align:right;">Add Lumpsum Extra Work Amount</td><td class="summary-amount" style="text-align:right;">' + extra.toFixed(2) + '</td></tr>';
+            html += '<tr class="summary-row summary-subtotal"><td style="text-align:right;">Sub Total Amount</td><td class="summary-amount" style="text-align:right;">' + sub.toFixed(2) + '</td></tr>';
+            
+            if (elecAmt > 0) html += '<tr class="summary-row res-only"><td style="text-align:right;">' + (ed.summary.elecLabel || 'Electrification') + '</td><td class="summary-amount" style="text-align:right;">' + elecAmt.toFixed(2) + '</td></tr>';
+            if (saniAmt > 0) html += '<tr class="summary-row res-only"><td style="text-align:right;">' + (ed.summary.saniLabel || 'Sanitary') + '</td><td class="summary-amount" style="text-align:right;">' + saniAmt.toFixed(2) + '</td></tr>';
+            html += '<tr class="summary-row summary-totalamt"><td style="text-align:right;">Total Amount</td><td class="summary-amount" style="text-align:right;">' + totalAmt.toFixed(2) + '</td></tr>';
+            if (dedAmt > 0) html += '<tr class="summary-row res-only"><td style="text-align:right;">' + (ed.summary.deductLabel || 'Deduction') + '</td><td class="summary-amount" style="text-align:right;">' + dedAmt.toFixed(2) + '</td></tr>';
+            if (gstAmt > 0) html += '<tr class="summary-row res-only"><td style="text-align:right;">' + (ed.summary.gstLabel || 'GST') + '</td><td class="summary-amount" style="text-align:right;">' + gstAmt.toFixed(2) + '</td></tr>';
+            if (contAmt > 0) html += '<tr class="summary-row res-only"><td style="text-align:right;">' + (ed.summary.contLabel || 'Contingency') + '</td><td class="summary-amount" style="text-align:right;">' + contAmt.toFixed(2) + '</td></tr>';
+            
+            html += '<tr class="summary-row summary-gross"><td style="text-align:right;">Gross Total Amount</td><td class="summary-amount" style="text-align:right;">' + gross.toFixed(2) + '</td></tr>';
+            html += '<tr class="summary-row"><td style="text-align:right;">Say Rs. in Lakh</td><td class="summary-amount" style="text-align:center;">' + (gross / 100000).toFixed(2) + '</td></tr>';
+            html += '<tr class="summary-row summary-words"><td colspan="2" style="text-align:right;">Amount in Words: ' + convertNumberToWords(gross) + '</td></tr>';
+            
+            summaryBody.innerHTML = html;
+        } catch(e) { console.error(e); }
+    }
+}
+
+function addValuationSection() {
+    isValuationMode = true;
+    valSectionCounter++;
+    var n = valSectionCounter;
+    var section = document.createElement("div");
+    section.className = "heading-section";
+    section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">Heading / Description : ' + n + '- </span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+    document.getElementById('valuationSectionsContainer').appendChild(section);
+    section.scrollIntoView({behavior:'smooth'});
+    updateAllTableNumbers(); 
+    updateLoadEstimateBtnState();
+}
+
+function loadEstimateIntoValuationTab() {
+    if (currentEstimateWorkIndex === null || currentEstimateWorkIndex === undefined) { 
+        showToast("No work selected!", "warning"); return; 
+    }
+    var work = allSavedWorks[currentEstimateWorkIndex];
+    if (!work) { showToast("Work data not found!", "error"); return; }
+    
+    var sourceStr = work['Estimate Data']; 
+    var loaded = false;
+    
+    if (sourceStr && String(sourceStr).trim() !== '') {
+        try {
+            var ed = JSON.parse(sourceStr);
+            if (ed.sections && ed.sections.length > 0) {
+                document.getElementById('valuationSectionsContainer').innerHTML = '';
+                valSectionCounter = 0;
+                ed.sections.forEach(function(sec) {
+                    addValuationSection(); // यह अंदर ही updateLoadEstimateBtnState को कॉल कर देगा
+                    var lastSec = document.querySelector('#valuationSectionsContainer .heading-section:last-child');
+                    if (!lastSec) return;
+                    var te = lastSec.querySelector('.heading-title');
+                    if (te && sec.name) te.textContent = sec.name;
+                    else if (te && sec.title) te.textContent = sec.title;
+                    
+                    var tc = lastSec.querySelector(".tables-container");
+                    if (sec.specs && sec.specs.length > 0) { 
+                        sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, work.SOR); }); 
+                    }
+                });
+                
+                if (ed.summary) {
+                    if (ed.summary.cib && document.getElementById('valCibAmt')) document.getElementById('valCibAmt').textContent = ed.summary.cib;
+                    if (ed.summary.extraWork && document.getElementById('valExtraWorkAmt')) document.getElementById('valExtraWorkAmt').textContent = ed.summary.extraWork;
+                    if (ed.summary.elecLabel && document.getElementById('valElecLabel')) document.getElementById('valElecLabel').textContent = ed.summary.elecLabel;
+                    if (ed.summary.saniLabel && document.getElementById('valSaniLabel')) document.getElementById('valSaniLabel').textContent = ed.summary.saniLabel;
+                    if (ed.summary.deductLabel && document.getElementById('valDeductLabel')) document.getElementById('valDeductLabel').textContent = ed.summary.deductLabel;
+                    if (ed.summary.gstLabel && document.getElementById('valGstLabel')) document.getElementById('valGstLabel').textContent = ed.summary.gstLabel;
+                    if (ed.summary.contLabel && document.getElementById('valContLabel')) document.getElementById('valContLabel').textContent = ed.summary.contLabel;
+                }
+                loaded = true;
+            }
+        } catch(e) { console.error(e); }
+    }
+    
+    if (loaded) { 
+        updateAllTableNumbers();
+        calcValuation(); 
+        updateLoadEstimateBtnState();
+        showToast("Original Estimate loaded for editing!", "success"); 
+    }
+    else { 
+        showToast("No original estimate found. Add sections manually.", "warning"); 
+    }
+}
+
+function loadEstimateToValuation() {
+    if (currentEstimateWorkIndex === null || currentEstimateWorkIndex === undefined) { showToast("No work selected!", "warning"); return; }
+    var work = allSavedWorks[currentEstimateWorkIndex];
+    if (!work) { showToast("Work data not found!", "error"); return; }
+    
+    var sourceStr = work['Valuation Data'] || work['Estimate Data'];
+    var loaded = false;
+    
+    if (sourceStr && String(sourceStr).trim() !== '') {
+        try {
+            var ed = JSON.parse(sourceStr);
+            if (ed.sections && ed.sections.length > 0) {
+                document.getElementById('valuationSectionsContainer').innerHTML = '';
+                valSectionCounter = 0;
+                ed.sections.forEach(function(sec) {
+                    addValuationSection();
+                    var lastSec = document.querySelector('#valuationSectionsContainer .heading-section:last-child');
+                    if (!lastSec) return;
+                    var te = lastSec.querySelector('.heading-title');
+                    if (te && sec.name) te.textContent = sec.name;
+                    else if (te && sec.title) te.textContent = sec.title;
+                    
+                    var tc = lastSec.querySelector(".tables-container");
+                    if (sec.specs && sec.specs.length > 0) { 
+                        sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, work.SOR); }); 
+                    }
+                });
+                
+                if (ed.summary) {
+                    if (ed.summary.cib && document.getElementById('valCibAmt')) document.getElementById('valCibAmt').textContent = ed.summary.cib;
+                    if (ed.summary.extraWork && document.getElementById('valExtraWorkAmt')) document.getElementById('valExtraWorkAmt').textContent = ed.summary.extraWork;
+                    if (ed.summary.elecLabel && document.getElementById('valElecLabel')) document.getElementById('valElecLabel').textContent = ed.summary.elecLabel;
+                    if (ed.summary.saniLabel && document.getElementById('valSaniLabel')) document.getElementById('valSaniLabel').textContent = ed.summary.saniLabel;
+                    if (ed.summary.deductLabel && document.getElementById('valDeductLabel')) document.getElementById('valDeductLabel').textContent = ed.summary.deductLabel;
+                    if (ed.summary.gstLabel && document.getElementById('valGstLabel')) document.getElementById('valGstLabel').textContent = ed.summary.gstLabel;
+                    if (ed.summary.contLabel && document.getElementById('valContLabel')) document.getElementById('valContLabel').textContent = ed.summary.contLabel;
+                }
+                loaded = true;
+            }
+        } catch(e) { console.error(e); }
+    }
+    
+    if (loaded) { updateAllTableNumbers(); calcValuation(); showToast("Data loaded successfully!", "success"); }
+    else { showToast("No previous data found. Add sections manually.", "warning"); }
+}
+
+function saveValuation() {
+    if (currentEstimateWorkIndex === null || currentEstimateWorkIndex === undefined) { showToast("No work selected!", "warning"); return; }
+    
+    var sections = [];
+    document.querySelectorAll('#valuationSectionsContainer .heading-section').forEach(function(sec) {
+        var titleEl = sec.querySelector('.heading-title'); 
+        var title = titleEl ? titleEl.textContent.trim() : '';
+        var specs = [];
+        
+        // ✅ FIX: एस्टिमेट वाला collectTableData फंक्शन इस्तेमाल करें जो पूरा डेटा सही से पढ़ लेगा
+        sec.querySelectorAll(".measurement-table").forEach(function(table) {
+            if (typeof collectTableData === 'function') {
+                specs.push(collectTableData(table));
+            }
+        });
+        
+        sections.push({ name: title, specs: specs });
+    });
+    
+    var summary = {
+        cib: document.getElementById('valCibAmt') ? document.getElementById('valCibAmt').textContent.trim() : '0.00',
+        extraWork: document.getElementById('valExtraWorkAmt') ? document.getElementById('valExtraWorkAmt').textContent.trim() : '0.00',
+        elecLabel: document.getElementById('valElecLabel') ? document.getElementById('valElecLabel').textContent.trim() : '',
+        saniLabel: document.getElementById('valSaniLabel') ? document.getElementById('valSaniLabel').textContent.trim() : '',
+        deductLabel: document.getElementById('valDeductLabel') ? document.getElementById('valDeductLabel').textContent.trim() : '',
+        gstLabel: document.getElementById('valGstLabel') ? document.getElementById('valGstLabel').textContent.trim() : '',
+        contLabel: document.getElementById('valContLabel') ? document.getElementById('valContLabel').textContent.trim() : ''
+    };
+    
+    var grossAmt = parseFloat((_gv('valGrossTotalAmt') || '0').replace(/[^0-9.\-]/g, '')) || 0;
+    var jsonData = JSON.stringify({ sections: sections, summary: summary, isValuation: true });
+    
+    showAppLoading('Saving Valuation...');
+    google.script.run.withSuccessHandler(function() {
+        hideAppLoading();
+        if (allSavedWorks[currentEstimateWorkIndex]) {
+            allSavedWorks[currentEstimateWorkIndex]['Valuation Data'] = jsonData;
+            allSavedWorks[currentEstimateWorkIndex]['Total Amount'] = grossAmt;
+            allSavedWorks[currentEstimateWorkIndex]['Status'] = 'Valuation';
+        }
+        updateDashboardFromSavedWorks();
+        showToast("Valuation saved successfully!", "success");
+    }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).saveEstimateData(currentEstimateWorkIndex, jsonData, 'Valuation', grossAmt);
+}
+
+function generateValuationAbstractAndBOQ() {
+    var boqBody = document.getElementById('valBoqTableBody'), abstractBody = document.getElementById('valAbstractTableBody');
+    if(!boqBody || !abstractBody) return;
+    
+    var groupedData = {}, order = [];
+    document.querySelectorAll("#valuationSectionsContainer .measurement-table").forEach(function(table) {
+        // ✅ FIX: यहाँ td[contenteditable='true'] की जगह td.toggle-collapse लिखा गया है
+        var specRow = table.querySelector(".spec-row td.toggle-collapse");
+        if(!specRow) return;
+        var rawHtml = specRow.innerHTML;
+        var specText = rawHtml.replace(/<div>/gi, '\n').replace(/<\/div>/gi, '').replace(/<br\s*\/?>/gi, '\n').replace(/&nbsp;/g, ' ').trim();
+        var tempEl = document.createElement('div'); tempEl.innerHTML = specText; specText = tempEl.innerText.trim();
+        var codeMatch = specText.match(/^\(([^)]+)\)/);
+        var code = codeMatch ? codeMatch[1] : '-';
+        var spec = codeMatch ? specText.replace(/^\([^)]+\)\s*[\u2014\-]\s*/, '').trim() : specText;
+        var r1Text = table.querySelector(".rate1") ? table.querySelector(".rate1").textContent : "";
+        var rate1 = extractRate(r1Text); var unitMatch = r1Text.match(/\/\s*(\S+)$/); var unit = unitMatch ? unitMatch[1] : '-';
+        var nqEl = table.querySelector(".netQty"); var qty = 0;
+        if (nqEl) { var qtyMatch = nqEl.textContent.match(/([\d.]+)/); if (qtyMatch) qty = parseFloat(qtyMatch[1]); }
+        if (groupedData[code]) { groupedData[code].qty += qty; groupedData[code].amount = groupedData[code].qty * groupedData[code].rate; }
+        else { groupedData[code] = { code: code, spec: spec, unit: unit, qty: qty, rate: rate1, amount: qty * rate1 }; order.push(code); }
+    });
+    var items = [], sr = 1;
+    order.forEach(function(code) {
+        var item = groupedData[code];
+        if (item.qty > 0 || item.amount > 0) items.push({ sr: sr++, code: item.code, spec: item.spec, unit: item.unit, qty: item.qty, rate: item.rate, amount: item.amount });
+    });
+    
+    abstractBody.innerHTML = items.map(function(item) {
+        return '<tr><td>'+item.sr+'</td><td>'+item.code+'</td><td>'+formatSpecForTable(item.spec)+'</td><td style="text-align:center;">'+item.unit+'</td><td style="text-align:right;">'+item.qty.toFixed(2)+'</td><td style="text-align:right;">'+item.rate.toFixed(2)+'</td><td style="text-align:right;">'+item.amount.toFixed(2)+'</td></tr>';
+    }).join('');
+    var totalAmt = items.reduce(function(sum, item) { return sum + item.amount; }, 0);
+    document.getElementById('valAbstractTotal').textContent = totalAmt.toFixed(2);
+    
+    var matTotals = { m40: 0, m20: 0, m10: 0, cement: 0, sand: 0, brick: 0 };
+    var specMap = {};
+    if (typeof specOptions !== 'undefined') { for (var key in specOptions) { if (specOptions[key]) specOptions[key].forEach(function(s) { specMap[s.code] = s; }); } }
+    boqBody.innerHTML = items.map(function(item) {
+        var sData = specMap[item.code] || {};
+        var m40 = item.qty * (sData.m40 || 0), m20 = item.qty * (sData.m20 || 0), m10 = item.qty * (sData.m10 || 0);
+        var cement = item.qty * (sData.cement || 0), sand = item.qty * (sData.sand || 0), brick = item.qty * (sData.brick || 0);
+        matTotals.m40 += m40; matTotals.m20 += m20; matTotals.m10 += m10; matTotals.cement += cement; matTotals.sand += sand; matTotals.brick += brick;
+        return '<tr><td>'+item.sr+'</td><td>'+formatSpecForTable(item.spec)+'</td><td style="text-align:right;">'+item.qty.toFixed(2)+'</td><td style="text-align:center;">'+item.unit+'</td><td style="text-align:right;">'+(m40>0 ? m40.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(m20>0 ? m20.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(m10>0 ? m10.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(cement>0 ? cement.toFixed(2) : '-')+'</td><td style="text-align:right;">'+(sand>0 ? sand.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(brick>0 ? brick.toFixed(0) : '-')+'</td></tr>';
+    }).join('');
+    var footEl = document.getElementById('valBoqTableFoot');
+    if (items.length > 0) {
+        footEl.style.display = 'table-row-group';
+        footEl.innerHTML = '<tr style="font-weight: 700; background: var(--bg-tertiary); border-top: 2px solid var(--border-color);"><td colspan="4" style="text-align: right;">Total Material Consumption:</td><td style="text-align:right;">'+matTotals.m40.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.m20.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.m10.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.cement.toFixed(2)+'</td><td style="text-align:right;">'+matTotals.sand.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.brick.toFixed(0)+'</td></tr>';
+    } else { footEl.style.display = 'none'; }
+}
+
+function _q(el, sel) { var n = el.querySelector(sel); return n ? n.textContent.trim() : ''; }
+function _gv(id) { var e = document.getElementById(id); return e ? e.textContent : ''; }
+
+function showHiddenValuationRows() {
+  var found = false;
+  document.querySelectorAll('#valSummaryTable .hidden-row').forEach(function(row) { 
+    row.classList.remove("hidden-row"); 
+    var i = row.querySelector('.btn-icon i'); 
+    if (i) i.className = "ri-eye-line"; 
+    found = true; 
+  });
+  
+  if (found) { 
+    // ✅ FIX: यहाँ calcValuation() नहीं बुलाएँगे, ताकि 0 वाली रो दिखी रहें
+    showToast("All hidden rows are now visible!", "success"); 
+  } 
+  else { 
+    showToast("No hidden rows found.", "info"); 
+  }
+}
+
+function calcValuation() {
+    isValuationMode = true; // Ensure calc() targets valuation container
+    calc();
+}
+
+function openValuationHeadingModal() {
+    isValuationMode = true; // वैल्यूएशन मोड ऑन रखें ताकि सेक्शन सही जगह ऐड हो
+    if (typeof openHeadingNameModal === 'function') {
+        openHeadingNameModal();
+    }
+}
+
+function openValuationLoadTemplateModal() {
+    isValuationMode = true; // वैल्यूएशन मोड ऑन रखें ताकि टेम्पलेट सही जगह लोड हो
+    if (typeof openLoadTemplateModal === 'function') {
+        openLoadTemplateModal();
+    }
+}
+
+var valContainer = document.getElementById('valuationSectionsContainer');
+if (valContainer) {
+    var observer = new MutationObserver(function() {
+        if (typeof updateLoadEstimateBtnState === 'function') {
+            updateLoadEstimateBtnState();
+        }
+    });
+    observer.observe(valContainer, { childList: true });
+}
+
+// Event Delegation for Valuation Sections
+(function() {
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('.open-spec-btn')) {
+      var btn = e.target.closest('.open-spec-btn');
+      var section = btn.closest(".heading-section"); if (!section) return;
+      if (section.closest('#valuationSectionsContainer')) {
+          isValuationMode = true;
+          var tc = section.querySelector(".tables-container");
+          var tables = tc.querySelectorAll(".measurement-table");
+          window._activeTablesContainer = tc; currentTable = tables.length > 0 ? tables[tables.length - 1] : null;
+          var selSOR = allSavedWorks[currentEstimateWorkIndex] ? allSavedWorks[currentEstimateWorkIndex].SOR : 'R.E.S. 11-04-2022';
+          specModalSorType = selSOR;
+          var sorDropdown = document.getElementById('specModalSorSelect'); if (sorDropdown) sorDropdown.value = specModalSorType;
+          if (!specOptions[specModalSorType] || specOptions[specModalSorType].length === 0) loadSpecificationsForSelectedSor(specModalSorType);
+          updateSpecSelect(specModalSorType); openModal('specModal');
+      }
+    }
+    if (e.target.closest('.delete-heading-btn')) {
+      var sec = e.target.closest('.delete-heading-btn').closest('.heading-section');
+      if (sec && sec.closest('#valuationSectionsContainer')) {
+          sec.remove(); 
+          calcValuation();
+          updateLoadEstimateBtnState();
+      }
+    }
+  });
+  
+  document.addEventListener("input", function(e) {
+    if (!e.target.closest('#valuationSectionsContainer')) return;
+    if (e.target.classList.contains("length") || e.target.classList.contains("breadth") || e.target.classList.contains("height") || e.target.classList.contains("cf") || e.target.classList.contains("no")) {
+      clearTimeout(calcDebounceTimer);
+      calcDebounceTimer = setTimeout(function() { calcValuation(); }, 120);
+    }
+  });
+})();
+</script>
