@@ -1,1 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Measurement System</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+  <?!= include('style'); ?>
+</head>
+<body>
 
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner">
+    <div class="spinner"></div>
+    <p>Loading...</p>
+  </div>
+</div>
+
+<div class="login-overlay" id="loginOverlay" role="dialog" aria-modal="true" aria-label="Login to MeasurePro">
+  <canvas id="loginParticles" class="login-particles-canvas"></canvas>
+  <div class="login-bg-shape shape-1"></div>
+  <div class="login-bg-shape shape-2"></div>
+  <div class="login-bg-shape shape-3"></div>
+  <div class="login-grid-overlay"></div>
+
+  <div class="login-card" id="loginCard">
+    <div class="login-glow"></div>
+    <div class="login-card-shine"></div>
+    <div class="login-header">
+      <div class="login-logo" id="loginLogo"><div class="imogi">😀</div></div>
+      <h2>Welcome Back</h2>
+      <h3>MeasurePro</h3>
+      <p>Login to continue to your account</p>
+    </div>
+    <form class="login-body" id="loginForm" onsubmit="return false;" novalidate>
+      <div class="login-input-group" id="userIdGroup">
+        <input type="text" id="loginUserId" placeholder=" " autocomplete="username" aria-label="User ID" required />
+        <label for="loginUserId">User ID</label>
+        <i class="ri-user-3-line input-icon"></i>
+        <span class="login-error-msg" id="userIdError" role="alert"></span>
+      </div>
+      <div class="login-input-group" id="passwordGroup">
+        <input type="password" id="loginPassword" placeholder=" " autocomplete="current-password" aria-label="Password" required />
+        <label for="loginPassword">Password</label>
+        <i class="ri-lock-password-line input-icon"></i>
+        <button type="button" class="password-toggle-btn" onclick="toggleLoginPassword()" tabindex="-1" aria-label="Toggle password visibility">
+          <i class="ri-eye-off-line" id="togglePasswordIcon"></i>
+        </button>
+        <span class="login-error-msg" id="passwordError" role="alert"></span>
+        <span class="caps-lock-warning" id="capsLockWarning"><i class="ri-alert-line"></i> Caps Lock is ON</span>
+      </div>
+      <div class="login-options">
+        <label class="remember-box">
+          <input type="checkbox" id="rememberMe">
+          <span class="remember-checkmark"></span>
+          <span>Remember me</span>
+        </label>
+        <a href="#!" class="forgot-link" id="forgotPasswordLink">Forgot Password?</a>
+      </div>
+      <div class="login-error-banner" id="loginErrorBanner" role="alert">
+        <i class="ri-error-warning-line"></i>
+        <span id="loginErrorText">Invalid credentials. Please try again.</span>
+      </div>
+      <div class="login-info-banner" id="forgotInfoBanner">
+        <i class="ri-customer-service-2-line"></i>
+        <div>
+          <strong>Forgot Password?</strong><br>
+          Please contact administrator to reset your password.<br>
+          <span style="font-size:13px;">📞 <a href="tel:7067343196" class="footer-link">7067343196</a></span><br>
+          <a href="#!" class="footer-link" id="sendOtpLink" style="font-size:13px;display:inline-flex;align-items:center;gap:4px;margin-top:6px;"><i class="ri-mail-send-line"></i> Or Send OTP to Your Mail</a>
+        </div>
+        <button type="button" class="login-info-close" onclick="closeForgotInfo()"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="otp-section" id="otpSection" style="display:none;">
+        <p style="color:rgba(255,255,255,0.8);margin-bottom:16px;font-size:14px;text-align:center;">Enter 4-digit OTP sent to your email</p>
+        <div class="otp-inputs">
+          <input type="text" maxlength="1" class="otp-input" id="otp1" inputmode="numeric" autocomplete="off">
+          <input type="text" maxlength="1" class="otp-input" id="otp2" inputmode="numeric" autocomplete="off">
+          <input type="text" maxlength="1" class="otp-input" id="otp3" inputmode="numeric" autocomplete="off">
+          <input type="text" maxlength="1" class="otp-input" id="otp4" inputmode="numeric" autocomplete="off">
+        </div>
+        <button class="btn btn-primary btn-block" onclick="verifyOtp()" style="margin-top:16px;border-radius:14px;height:50px;font-weight:600;">
+          <i class="ri-shield-check-line"></i> Verify OTP
+        </button>
+        <button class="btn btn-secondary btn-block" onclick="cancelOtp()" style="margin-top:8px;border-radius:14px;height:44px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.8);">
+          <i class="ri-arrow-left-line"></i> Back to Login
+        </button>
+      </div>
+      <button class="btn btn-primary btn-block login-btn" onclick="loginUser()" id="loginBtn" type="submit">
+        <span class="login-btn-content"><i class="ri-login-box-line"></i><span>Login</span></span>
+        <span class="login-btn-spinner">
+          <svg class="spinner-svg" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="31.4 31.4" stroke-dashoffset="0">
+              <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.75s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+          <span>Authenticating...</span>
+        </span>
+      </button>
+      <div class="login-footer">
+        Developed by : <strong> Er. Pradeep Rajawat</strong><br>
+        Mobile 📞 :  <strong><span style="font-size:13px;"><a href="tel:7067343196" class="footer-link">7067343196</a></span><span><a href="https://wa.me/917067343196" target="_blank" class="floating-whatsapp"><i class="fa-brands fa-whatsapp"></i></a></span></strong>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="appContent" style="display:none;">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"><i class="ri-ruler-line"></i><span class="logo-text">MeasurePro</span></div>
+      <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="ri-menu-line"></i></button>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <span class="nav-section-title">MAIN</span>
+        <a href="#" class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')"><i class="ri-dashboard-3-line"></i><span>Dashboard</span></a>
+        <a href="#" class="nav-item has-submenu" data-page="savedWorks" onclick="toggleSubmenu(this)"><i class="ri-folder-line"></i><span>Works</span><span class="nav-badge" id="workCountBadge">0</span><i class="ri-arrow-down-s-line submenu-arrow"></i></a>
+        <div class="nav-submenu" id="savedWorksSubmenu">
+          <a href="#" class="nav-subitem" data-page="savedWorks" data-status="" onclick="navigateToSavedWorks('')"><i class="ri-folder-line"></i><span>All Work</span></a>
+          <a href="#" class="nav-subitem" data-page="savedWorks" data-status="Inbox" onclick="navigateToSavedWorks('Inbox')"><i class="ri-inbox-line"></i><span>Inbox</span><span class="nav-badge" id="inboxCountBadge" style="background:#6366f1;font-size:10px;padding:1px 6px;">0</span></a>
+          <a href="#" id="navDraft" class="nav-subitem" data-page="savedWorks" data-status="Draft" onclick="navigateToSavedWorks('Draft')"><i class="ri-file-edit-line"></i><span>Draft</span></a>
+          <a href="#" class="nav-subitem" data-page="savedWorks" data-status="Estimated" onclick="navigateToSavedWorks('Estimated')"><i class="ri-checkbox-circle-line"></i><span>Estimated</span></a>
+        </div>
+        <a href="#" id="navValuationMenu" class="nav-item" data-page="valuationList" onclick="navigateToValuationList()"><i class="ri-file-chart-line"></i><span>Valuation</span></a>
+      </div>
+      <div class="nav-section">
+        <span class="nav-section-title">MANAGE</span>
+        <a href="#" id="navTemplates" class="nav-item has-submenu" data-page="templates" onclick="toggleSubmenu(this)"><i class="ri-layout-4-line"></i><span>Templates</span><span class="nav-badge" id="templateCountBadge">0</span><i class="ri-arrow-down-s-line submenu-arrow"></i></a>
+        <div class="nav-submenu" id="templateSubmenu">
+          <a href="#" class="nav-subitem" data-page="templates" data-tpl-type="UT" onclick="navigateToTemplates('UT')"><i class="ri-user-line"></i><span>UT Templates</span></a>
+          <a href="#" class="nav-subitem" data-page="templates" data-tpl-type="ST" onclick="navigateToTemplates('ST')"><i class="ri-server-line"></i><span>ST Templates</span></a>
+        </div>
+        <a href="#" id="navSpecifications" class="nav-item" data-page="specifications" onclick="navigateTo('specifications')"><i class="ri-file-list-3-line"></i><span>SOR</span></a>
+        <a href="#" id="navSecurity" class="nav-item" data-page="security" onclick="navigateTo('security')" style="display:none;"><i class="ri-shield-user-line"></i><span>Security</span></a>
+        <a href="#" class="nav-item" data-page="settings" onclick="navigateTo('settings')"><i class="ri-settings-3-line"></i><span>Settings</span></a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar">SE</div>
+        <div class="user-details"><span class="user-name">Sub Engineer</span><span class="user-role">Janpad Panchayat</span></div>
+      </div>
+      <button class="sidebar-logout-btn" onclick="logoutUser()" title="Logout"><i class="ri-logout-box-r-line"></i></button>
+    </div>
+  </div>
+
+  <div class="main-content" id="mainContent">
+    <header class="top-navbar">
+      <div class="navbar-left">
+        <button class="mobile-toggle" onclick="toggleSidebar()"><i class="ri-menu-line"></i></button>
+        <div class="page-title" id="pageTitle">Dashboard</div>
+      </div>
+      <div class="navbar-right">
+        <div class="nav-divider"></div>
+        <a href="https://wa.me/917067343196" target="_blank" class="floating-whatsapp"><i class="fa-brands fa-whatsapp"></i></a>
+        <button class="nav-icon-btn" id="notifBtn" onclick="toggleNotifications()">
+          <i class="ri-notification-3-line"></i>
+          <span class="notif-count-badge" id="notifCountBadge" style="display:none;">0</span>
+        </button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()" title="Fullscreen"><i class="ri-fullscreen-line"></i></button>
+        <button class="nav-icon-btn" onclick="openPrintSelectionModal()" title="Print"><i class="ri-printer-line"></i></button>
+        <button class="nav-icon-btn" onclick="logoutUser()" title="Logout"><i class="ri-logout-box-r-line"></i></button>
+      </div>
+      <div class="notifications-dropdown" id="notificationsDropdown">
+        <div class="notif-header"><h4>Notifications</h4><button onclick="clearNotifications()">Clear All</button></div>
+        <div class="notif-list" id="notifList"><div class="notif-item"><i class="ri-information-line"></i><div><p>Welcome to MeasurePro!</p><span>Just now</span></div></div></div>
+      </div>
+    </header>
+
+    <div class="page-container">
+      <div class="page active" id="page-dashboard">
+        <div class="dashboard-stats">
+          <div class="stat-card stat-total"><div class="stat-icon"><i class="ri-folder-chart-line"></i></div><div class="stat-info"><span class="stat-value" id="statTotalWorks">0</span><span class="stat-label">Total Works</span></div></div>
+          <div class="stat-card stat-inbox"><div class="stat-icon"><i class="ri-inbox-line"></i></div><div class="stat-info"><span class="stat-value" id="statInboxWorks">0</span><span class="stat-label">Inbox</span></div></div>
+          <div class="stat-card stat-draft"><div class="stat-icon"><i class="ri-file-edit-line"></i></div><div class="stat-info"><span class="stat-value" id="statDraftWorks">0</span><span class="stat-label">Draft</span></div></div>
+          <div class="stat-card stat-estimated"><div class="stat-icon"><i class="ri-checkbox-circle-line"></i></div><div class="stat-info"><span class="stat-value" id="statEstimatedWorks">0</span><span class="stat-label">Estimated</span></div></div>
+          <div class="stat-card stat-valuation"><div class="stat-icon"><i class="ri-file-chart-line"></i></div><div class="stat-info"><span class="stat-value" id="statValuationWorks">0</span><span class="stat-label">Valuation</span></div></div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card recent-works-card"><div class="card-header"><h3><i class="ri-time-line"></i> Recent Works</h3><button class="card-action" onclick="navigateTo('savedWorks')">View All</button></div><div class="card-body"><div class="recent-works-list" id="recentWorksList"><div class="empty-state"><i class="ri-folder-open-line"></i><p>No works yet.</p></div></div></div></div>
+          <div class="card quick-actions-card"><div class="card-header"><h3><i class="ri-flashlight-line"></i> Quick Actions</h3></div><div class="card-body"><div class="quick-actions-grid"><button class="quick-action-btn" onclick="openNewWorkForm()"><i class="ri-add-circle-line"></i><span>New Work</span></button><button class="quick-action-btn" onclick="navigateTo('savedWorks')"><i class="ri-folder-line"></i><span>View Works</span></button><button class="quick-action-btn" id="qaTemplates" onclick="navigateToTemplates('My')"><i class="ri-layout-4-line"></i><span>Templates</span></button><button class="quick-action-btn" id="qaSpecifications" onclick="navigateTo('specifications')"><i class="ri-file-list-3-line"></i><span>Specifications</span></button></div></div></div>
+        </div>
+      </div>
+
+      <div class="page" id="page-newWork">
+        <div class="card"><div class="card-header"><h3><i class="ri-add-circle-line"></i> Create New Work</h3></div><div class="card-body">
+          <div class="form-grid">
+            <div class="form-group"><label>SOR Type <span class="required">*</span></label><select id="sorSelect" onchange="updateSpecOptions()"><option value="">-- Select SOR --</option><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select></div>
+            <div class="form-group"><label>Janpad <span class="required">*</span></label><select id="janpadSelect" onchange="updateEngineerOptions()"><option value="">-- Select Janpad --</option></select></div>
+            <div class="form-group"><label>Engineer <span class="required">*</span></label><select id="engineerSelect" onchange="updatePanchayatOptions()"><option value="">-- Select Engineer --</option></select></div>
+            <div class="form-group"><label>Panchayat <span class="required">*</span></label><select id="panchayatSelect"><option value="">-- Select Panchayat --</option></select></div>
+            <div class="form-group"><label>Head of Account <span class="required">*</span></label><select id="head1"><option value="">-- Select Head --</option></select></div>
+            <div class="form-group"><label>Additional Head</label><select id="head2"><option value="">-- Select Head --</option></select></div>
+            <div class="form-group"><label>T.S. Authority <span class="required">*</span></label><select id="ts"><option value="">-- Select T.S. Authority --</option></select></div>
+            <div class="form-group"><label>A.S. Authority <span class="required">*</span></label><select id="as"><option value="">-- Select A.S. Authority --</option></select></div>
+            <div class="form-group full-width"><label>Work Name <span class="required">*</span></label><textarea id="workName" rows="2" placeholder="Enter complete work name..." oninput="autoResize(this)"></textarea></div>
+            <div class="form-group full-width"><label>Remark </label><textarea id="msg" rows="2" placeholder="Any additional remarks..." oninput="autoResize(this)"></textarea></div>
+          </div>
+          <div class="form-actions"><button class="btn btn-primary" onclick="saveWorkDetail()" id="saveWorkBtn"><i class="ri-save-line"></i> Save Work</button><button class="btn btn-secondary" onclick="resetWorkDetailForm()"><i class="ri-refresh-line"></i> Reset</button></div>
+        </div></div>
+      </div>
+
+      <div class="page" id="page-savedWorks">
+        <div class="card"><div class="card-header"><h3><i class="ri-folder-line"></i> Saved Works</h3><div class="card-actions"><button class="btn btn-sm btn-outline" onclick="openNewWorkForm()"><i class="ri-add-line"></i> New</button></div></div><div class="card-body">
+          <div class="table-filters">
+            <div class="filter-group"><label>Panchayat</label><select id="searchPanchayat" onchange="filterSavedWorks()"><option value="">All</option></select></div>
+            <div class="filter-group"><label>Search Work</label><div class="work-search-box"><i class="ri-search-line"></i><input type="text" id="searchWork" placeholder="Type to search work..." oninput="filterSavedWorks()"></div></div>
+          </div>
+          <div class="table-responsive"><table class="data-table"><thead><tr><th>Sr No</th><th>Panchayat</th><th>Work Name</th><th>Estimated Amount</th><th>Valuation Amount</th><th>Actions</th></tr></thead><tbody id="savedWorkTableBody"><tr><td colspan="6" class="empty-row">No works found</td></tr></tbody></table></div>
+          <div class="pagination-container" id="savedWorkPagination"></div>
+        </div></div>
+      </div>
+
+      <div class="page" id="page-templates">
+        <div class="templates-header-bar">
+          <div class="templates-tabs" id="templateTypeTabs">
+            <button class="tpl-type-tab active tpl-tab-readonly" data-type="UT"><i class="ri-user-line"></i> UT Templates</button>
+            <button class="tpl-type-tab tpl-tab-readonly" data-type="ST"><i class="ri-server-line"></i> ST Templates</button>
+          </div>
+          <div class="templates-actions-bar">
+            <select id="templateSorFilter" onchange="filterTemplateGrid()"><option value="">All SOR Types</option><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select>
+            <button class="btn btn-primary" id="createTemplateBtn" onclick="openTemplateBuilder()"><i class="ri-add-line"></i> Create Template</button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table" id="templateTable" style="min-width:950px;">
+            <thead><tr><th style="width:50px;text-align:center;">Sr</th><th style="min-width:200px;">Template Name</th><th style="min-width:180px;">Description</th><th style="width:170px;">SOR Type</th><th style="width:140px;text-align:center;">Details</th><th style="width:120px;">Created</th><th style="width:120px;">Created By</th><th style="width:130px;text-align:center;">Actions</th></tr></thead>
+            <tbody id="templateTableBody"><tr><td colspan="8" class="empty-row">No templates found.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="page" id="page-templateBuilder">
+        <div class="card" style="margin-bottom:24px;">
+          <div class="card-header"><h3><i class="ri-edit-box-line"></i> <span id="templateBuilderTitle">Create Template</span></h3><div class="card-actions"><button class="btn btn-sm btn-secondary" onclick="navigateToTemplates(currentTemplateType||'My')"><i class="ri-arrow-left-line"></i> Back</button></div></div>
+          <div class="card-body">
+            <div class="form-grid">
+              <div class="form-group"><label>Template Name <span class="required">*</span></label><input type="text" id="templateName" placeholder="e.g., Road Construction Template"></div>
+              <div class="form-group"><label>SOR Type <span class="required">*</span></label><select id="templateSorType" onchange="updateSummaryBoxBasedOnSOR()"><option value="">-- Select SOR --</option><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select></div>
+              <div class="form-group"><label>Description</label><input type="text" id="templateDescription" placeholder="Brief description..."></div>
+            </div>
+          </div>
+        </div>
+        <div class="estimate-actions" style="margin-bottom:24px;">
+          <button class="btn btn-primary" onclick="addTemplateSection()"><i class="ri-add-line"></i> Add Section</button>
+          <button class="btn btn-success" onclick="saveTemplateFromBuilder()"><i class="ri-save-line"></i> Save Template</button>
+        </div>
+        <div id="templateSectionsContainer"></div>
+      </div>
+
+      <div class="page" id="page-specifications">
+        <div class="card"><div class="card-header"><h3><i class="ri-file-list-3-line"></i> Manage Specifications</h3><button id="btnAddSpec" class="btn btn-sm btn-primary" onclick="openAddSorModal('')"><i class="ri-add-line"></i> Add New</button></div><div class="card-body">
+          <div class="spec-tabs"><button class="spec-tab active" onclick="switchSpecTab(this, 'R.E.S. 11-04-2022')">R.E.S. 11-04-2022</button></div>
+          <div class="spec-search-box"><i class="ri-search-line"></i><input type="text" placeholder="Search by code or specification..." id="specPageSearch" oninput="filterSpecPageList()"></div>
+          <div class="table-responsive"><table class="data-table"><thead><tr><th>Sr</th><th>Code</th><th>Specification</th><th>Work Rate</th><th>Labour Rate</th><th>Unit</th><th>Actions</th></tr></thead><tbody id="specPageTableBody"><tr><td colspan="7" class="empty-row">Loading...</td></tr></tbody></table></div>
+        </div></div>
+      </div>
+
+      <div class="page" id="page-security">
+        <div class="card">
+          <div class="card-header"><h3><i class="ri-shield-user-line"></i> Manage Users</h3><div class="card-actions"><button class="btn btn-sm btn-primary" onclick="openUserModal()"><i class="ri-add-line"></i> Add New User</button></div></div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead><tr><th>Sr</th><th>Type</th><th>Name / Value</th><th>Parent ID</th><th>User ID</th><th>Mobile</th><th>Gmail</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="userTableBody"><tr><td colspan="9" class="empty-row">Loading users...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-settings">
+        <div class="settings-grid">
+          <div class="card"><div class="card-header"><h3><i class="ri-user-line"></i> User Information</h3></div><div class="card-body"><div class="form-grid"><div class="form-group"><label>Name</label><input type="text" id="settingsUserName" value="--" readonly></div><div class="form-group"><label>Role / Type</label><input type="text" id="settingsUserRole" value="--" readonly></div><div class="form-group"><label>Janpad</label><input type="text" id="settingsUserJanpad" value="--" readonly></div><div class="form-group"><label>Engineer</label><input type="text" id="settingsUserEngineer" value="--" readonly></div><div class="form-group"><label>User ID</label><input type="text" id="settingsUserId" value="--" readonly></div><div class="form-group"><label>Mobile</label><input type="text" id="settingsUserMobile" value="--" readonly></div><div class="form-group full-width"><label>GMail</label><input type="text" id="settingsUserGmail" value="--" readonly></div></div></div></div>
+          <div class="card">
+            <div class="card-header"><h3><i class="ri-shield-keyhole-line"></i> Password Information</h3></div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group"><label>Password Generated</label><input type="text" id="settingsPwdGenDate" value="--" readonly></div>
+                <div class="form-group"><label>Password Expiry</label><input type="text" id="settingsPwdExpDate" value="--" readonly></div>
+                <div class="form-group"><label>Account Status</label><input type="text" id="settingsUserStatus" value="--" readonly></div>
+              </div>
+              <div class="pwd-expiry-alert" id="pwdExpiryAlert" style="display:none;">
+                <i class="ri-alarm-warning-line"></i>
+                <div>
+                  <strong>⚠️ Password Expiring Soon!</strong>
+                  <p id="pwdExpiryAlertMsg">Your password will expire in X days. Please contact administrator to reset.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3><i class="ri-lock-password-line"></i> Change Password</h3></div>
+            <div class="card-body">
+              <div id="changePassStep1">
+                <div class="form-group">
+                  <label>Old Password <span class="required">*</span></label>
+                  <div style="position:relative;">
+                    <input type="password" id="oldPasswordInput" placeholder="Enter current password" style="padding-right:44px;">
+                    <button type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" onclick="togglePassVis('oldPasswordInput', this)"><i class="ri-eye-off-line"></i></button>
+                  </div>
+                </div>
+                <button class="btn btn-primary" onclick="requestChangePassOtp()"><i class="ri-mail-send-line"></i> Send OTP</button>
+              </div>
+              <div id="changePassStep2" style="display:none;">
+                <div class="form-group">
+                  <label>Enter OTP (Sent to email) <span class="required">*</span></label>
+                  <input type="text" id="changePassOtpInput" placeholder="4-digit OTP" maxlength="4" inputmode="numeric" style="letter-spacing:8px;font-weight:700;text-align:center;font-size:20px;">
+                </div>
+                <div class="form-group">
+                  <label>New Password <span class="required">*</span></label>
+                  <div style="position:relative;">
+                    <input type="password" id="newPasswordInput" placeholder="Enter new password" style="padding-right:44px;">
+                    <button type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" onclick="togglePassVis('newPasswordInput', this)"><i class="ri-eye-off-line"></i></button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Confirm New Password <span class="required">*</span></label>
+                  <div style="position:relative;">
+                    <input type="password" id="confirmNewPasswordInput" placeholder="Re-enter new password" style="padding-right:44px;">
+                    <button type="button" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;" onclick="togglePassVis('confirmNewPasswordInput', this)"><i class="ri-eye-off-line"></i></button>
+                  </div>
+                </div>
+                <div class="form-actions" style="margin-top:20px;">
+                  <button class="btn btn-success" onclick="saveNewPassword()"><i class="ri-save-line"></i> Save Password</button>
+                  <button class="btn btn-secondary" onclick="cancelChangePassword()"><i class="ri-close-line"></i> Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card"><div class="card-header"><h3><i class="ri-database-2-line"></i> System Info</h3></div><div class="card-body"><div class="info-list"><div class="info-item"><span class="info-label">Version</span><span class="info-value">2.1.0</span></div><div class="info-item"><span class="info-label">Last Updated</span><span class="info-value">31/03/2026</span></div></div></div></div>
+        </div>
+      </div>
+
+      <div class="page" id="page-workDetail">
+        <div class="work-detail-tabs">
+          <button class="wd-tab-btn active" data-tab="estimate" onclick="switchWorkDetailTab('estimate')"><i class="ri-calculator-line"></i> Estimate</button>
+          <button class="wd-tab-btn" data-tab="report" onclick="switchWorkDetailTab('report')"><i class="ri-file-text-line"></i> Technical Report</button>
+          <button class="wd-tab-btn" data-tab="abstract" onclick="switchWorkDetailTab('abstract')"><i class="ri-file-list-2-line"></i> Abstract</button>
+          <button class="wd-tab-btn" data-tab="boq" onclick="switchWorkDetailTab('boq')"><i class="ri-file-table-line"></i> BOQ</button>
+          <button class="wd-tab-btn" data-tab="drawing" onclick="switchWorkDetailTab('drawing')"><i class="ri-image-line"></i> Drawing</button>
+        </div>
+
+        <div class="wd-tab-content active" id="wdTabEstimate">
+          <div class="estimate-header">
+            <div class="estimate-info">
+              <div class="estimate-meta"><span class="meta-item"><strong>SOR :</strong> <span id="displaySor">--</span></span><span class="meta-item"><strong>Created By :</strong> <span id="displayEngineer">--</span></span></div>
+              <h2 class="estimate-title" style="text-align:center; text-decoration: underline;">Detailed Estimate</h2>
+              <div class="estimate-work-info"><p style="text-align:center;"><strong>Name of Work :</strong> <span id="displayWorkName">--</span></p><p style="text-align:center; text-decoration: underline;"><strong>GRAM PANCHAYAT :</strong> <span id="displayPanchayat">--</span>, <strong>JANPAD PANCHAYAT :</strong> <span id="displayJanpad">--</span></p></div>
+            </div>
+            <div class="estimate-actions">
+              <button class="btn btn-outline" onclick="openLoadTemplateModal()"><i class="ri-layout-4-line"></i> Load Template</button>
+              <button class="btn btn-primary" onclick="addHeadingSection()"><i class="ri-add-line"></i> Add Section</button>
+              <button class="btn btn-secondary" onclick="goBackSavedWorkSection()"><i class="ri-arrow-left-line"></i> Back</button>
+            </div>
+          </div>
+          <div id="headingSectionsContainer"></div>
+          <div class="summary-card">
+            <div class="summary-header print-hide"><h3><i class="ri-calculator-line"></i> Summary</h3><button class="btn btn-sm btn-outline" onclick="showHiddenSummaryRows()"><i class="ri-eye-line"></i> Show Hidden</button></div>
+            <div class="summary-table-container">
+              <table class="summary-table" id="summaryTable">
+                <thead class="print-hide"><tr><th>Description</th><th style="width:150px;">Amount (&#8377;)</th><th style="width:80px;">Action</th></tr></thead>
+                <tbody>
+                  <tr class="summary-row" data-type="cib"><td contenteditable="true" style="text-align:right;">Citizen Information Board</td><td contenteditable="true" class="summary-amount" id="cibAmt" oninput="calc()">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row" data-type="extra"><td contenteditable="true" style="text-align:right;">Add Lumpsum Extra Work Amount</td><td contenteditable="true" class="summary-amount" id="extraWorkAmt" oninput="calc()">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row summary-subtotal" data-type="subtotal"><td style="text-align:right;">Sub Total Amount</td><td class="summary-amount" id="subTotalAmt">0.00</td><td class="print-hide"></td></tr>
+                  <tr class="summary-row res-only" data-type="electrification"><td contenteditable="true" id="elecLabel" style="text-align:right;" oninput="calc()">Add 0 % for Electrification</td><td class="summary-amount" id="elecAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row res-only" data-type="sanitary"><td contenteditable="true" id="saniLabel" style="text-align:right;" oninput="calc()">Add 0 % for Sanitary Fitting</td><td class="summary-amount" id="saniAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row res-only summary-totalamt" data-type="totalamt"><td style="text-align:right;">Total Amount</td><td class="summary-amount" id="totalAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row res-only" data-type="deduction"><td contenteditable="true" id="deductLabel" style="text-align:right;" oninput="calc()">Deduction Contractor Profit 10%</td><td class="summary-amount" id="deductionAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row res-only" data-type="gst"><td contenteditable="true" id="gstLabel" style="text-align:right;" oninput="calc()">Add G.S.T. Charge 18%</td><td class="summary-amount" id="gstAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row res-only" data-type="contingency"><td contenteditable="true" id="contLabel" style="text-align:right;" oninput="calc()">Add Contingency Charge 0 %</td><td class="summary-amount" id="contAmt">0.00</td><td class="print-hide"><button class="btn-icon" onclick="toggleSummaryRow(this)"><i class="ri-eye-line"></i></button></td></tr>
+                  <tr class="summary-row summary-gross" data-type="gross"><td style="text-align:right;">Gross Total Amount</td><td class="summary-amount" id="grossTotalAmt">0.00</td><td class="print-hide"></td></tr>
+                  <tr class="summary-row" data-type="sayrs"><td style="text-align:right;">Say Rs. in Lakh</td><td class="summary-amount" style="text-align: center;" id="sayRs">0.00</td><td class="print-hide"></td></tr>
+                  <tr class="summary-row summary-words" data-type="words-en"><td colspan="3" id="amountInEnglish">Amount in Words: zero rupees only.</td></tr>
+                  <tr class="summary-row summary-words" data-type="words-hi"><td colspan="3" id="amountInHindi">Amount in Hindi: zero rupees only.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="signature-section print-hide">
+              <div class="signature-block"><p class="signature-title">Sub Engineer</p><p class="signature-org">Janpad Panchayat <span id="signatureJanpad1">--</span></p><div class="signature-line"></div></div>
+              <div class="signature-block"><p class="signature-title">Assistant Engineer</p><p class="signature-org">Janpad Panchayat <span id="signatureJanpad2">--</span></p><div class="signature-line"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wd-tab-content" id="wdTabReport">
+          <div class="report-actions print-hide" style="margin-bottom: 20px; justify-content: flex-end;">
+            <button class="btn btn-success" id="saveEstimateBtn" onclick="saveEstimate()" style="display:none;"><i class="ri-save-line"></i> Save Estimate</button>
+            <button class="btn btn-warning" id="submitEstimateBtn" onclick="submitEstimateFromDetail()" style="display:none;"><i class="ri-send-plane-line"></i> Submit Estimate</button>
+          </div>
+          <div class="report-document" id="reportSection">
+            
+              <table class="meta-table">
+                <tr><td colspan="6" class="report-title" style="font-size:22px;" contenteditable="true">Technical Report</td></tr>
+                <tr><td class="sn-cell">1</td><td class="label-cell">Name of Work</td><td colspan="4" id="nameOfWork"></td></tr>
+                <tr><td class="sn-cell">2</td><td class="label-cell">Agency</td><td id="agency"></td><td class="label-cell" style="text-align:left;">J.P. :- <span id="signatureJanpad5"></span></td><td class="label-cell">Z.P. :- BHIND</td></tr>
+                <tr><td class="sn-cell">3</td><td class="label-cell">Estimated Cost</td><td colspan="4" id="estCost"></td></tr>
+                <tr><td class="sn-cell">4</td><td class="label-cell">Authority For T/S</td><td colspan="4" id="authTS"></td></tr>
+                <tr><td class="sn-cell">5</td><td class="label-cell">Authority For A/S</td><td colspan="4" id="authAS"></td></tr>
+                <tr><td class="sn-cell">6</td><td class="label-cell">Head of Account</td><td colspan="4" id="hoa"></td></tr>
+                <tr><td class="sn-cell">7</td><td class="label-cell">Sanctioned Year</td><td colspan="4">2026 - 27</td></tr>
+                <tr><td class="sn-cell">8</td><td class="label-cell">Provision</td><td colspan="4" class="provision-cell" contenteditable="true"><ul id="provisions"></ul></td></tr>
+                <tr><td class="sn-cell">9</td><td class="label-cell">Rates</td><td colspan="4" id="rates"></td></tr>
+              </table>
+              <div class="amount-in-words-box"><div class="words-title">Say Rs.</div><div id="inWords" class="words-text"></div><div id="inHindi" class="words-text"></div></div>
+              <div class="certified-section"><h3 class="section-heading">Certified that</h3><table class="certified-table"><tr><td class="sn-cell">1</td><td>I have visit the work site.</td></tr><tr><td class="sn-cell">2</td><td>Proposed work is totally New.</td></tr><tr><td class="sn-cell">3</td><td>Proposed work has not been sanctioed in any fund previously.</td></tr><tr><td class="sn-cell">4</td><td>The work proposed work is in govt. land.</td></tr></table><div class="report-signatures"><div class="report-signature-block"><p class="sig-title">Sub Engineer</p><p class="sig-org">Janpad Panchayat <span id="signatureJanpad3">--</span></p></div><div class="report-signature-block"><p class="sig-title">Assistant Engineer</p><p class="sig-org">Janpad Panchayat <span id="signatureJanpad4">--</span></p></div></div></div>
+            
+          </div>
+        </div>
+
+        <div class="wd-tab-content" id="wdTabAbstract">
+          <div class="card">
+            <div class="card-body">
+              <div class="report-doc-header">
+                <h3>Abstract of Estimate</h3>
+                <div class="meta-line"><strong>Name of Work:</strong> <span id="abstractWorkName"></span></div>
+                <div class="meta-line"><strong>Gram Panchayat:</strong> <span id="abstractPanchayat"></span> | <strong>Janpad Panchayat:</strong> <span id="abstractJanpad"></span></div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="abstractTable">
+                  <thead><tr><th>Sr No</th><th>Code</th><th>Description / Specification</th><th>Unit</th><th>Quantity</th><th>Rate (₹)</th><th>Amount (₹)</th></tr></thead>
+                  <tbody id="abstractTableBody"><tr><td colspan="7" class="empty-row">Switch to Abstract tab to view data.</td></tr></tbody>
+                  <tbody>
+                    <tr style="background: var(--bg-tertiary); font-weight: 700;">
+                      <td colspan="6" style="text-align: right;">Total Estimated Cost:</td>
+                      <td id="abstractTotal" style="text-align: right;">0.00</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wd-tab-content" id="wdTabBOQ">
+          <div class="card">
+            <div class="card-body">
+              <div class="report-doc-header">
+                <h3>Material Consumption (BOQ)</h3>
+                <div class="meta-line"><strong>Name of Work:</strong> <span id="boqWorkName"></span></div>
+                <div class="meta-line"><strong>Gram Panchayat:</strong> <span id="boqPanchayat"></span> | <strong>Janpad Panchayat:</strong> <span id="boqJanpad"></span></div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="boqTable" style="min-width: 1200px;">
+                  <thead>
+                    <tr>
+                      <th rowspan="2" style="width: 50px;">Sr No</th>
+                      <th rowspan="2" style="min-width: 300px;">Description</th>
+                      <th rowspan="2" style="width: 70px;">Qty</th>
+                      <th rowspan="2" style="width: 60px;">Unit</th>
+                      <th colspan="3" style="text-align:center; border-bottom: 1px solid var(--border-light); min-width: 300px;">Metal (M³)</th>
+                      <th rowspan="2" style="width: 100px;">Cement (Bag)</th>
+                      <th rowspan="2" style="width: 100px;">Sand (M³)</th>
+                      <th rowspan="2" style="width: 100px;">Brick (Nos)</th>
+                    </tr>
+                    <tr>
+                      <th style="width: 100px;">40 MM</th>
+                      <th style="width: 100px;">20 MM</th>
+                      <th style="width: 100px;">10 MM</th>
+                    </tr>
+                  </thead>
+                  <tbody id="boqTableBody"><tr><td colspan="12" class="empty-row">Switch to BOQ tab to view data.</td></tr></tbody>
+                  <tfoot id="boqTableFoot" style="display: none;"></tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="wd-tab-content" id="wdTabDrawing">
+          <div class="card">
+            <div class="card-header print-hide"><h3><i class="ri-image-line"></i> Drawing / Sketch</h3></div>
+            <div class="card-body">
+              <div class="form-group print-hide">
+                <label>Select Drawing from Drive</label>
+                <select id="drawingSelect" onchange="previewDriveDrawing(this)" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; width:100%;">
+                  <option value="">-- Choose File --</option>
+                </select>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 5px;" class="print-hide">Note: Sirf Drive folder mein rakhi gayi files yahan dikhegi.</p>
+              </div>
+              <div id="drawingPreviewContainer" style="text-align: center; margin-top: 20px; display:none;">
+                <img id="drawingPreview" src="" style="max-width: 100%; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px; background: white; display:none;">
+                <iframe id="drawingPdfPreview" src="" style="width: 100%; height: 500px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: white; display:none;"></iframe>
+                <br class="print-hide">
+                <button class="btn btn-danger btn-sm print-hide" onclick="clearDrawing()" style="margin-top: 15px;"><i class="ri-delete-bin-line"></i> Remove File</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <?!= include('valuation'); ?>
+    </div>
+  </div>
+</div>
+
+<div class="pwd-ticker-bar" id="pwdExpiryTicker" style="display:none;">
+  <div class="pwd-ticker-content" id="pwdTickerContent">Password Expiry Warning...</div>
+</div>
+
+<div class="modal-overlay" id="workDetailModal"><div class="modal-dialog modal-lg"><div class="modal-header"><h3><i class="ri-file-text-line"></i> Work Details</h3><button class="modal-close" onclick="closeModal('workDetailModal')"><i class="ri-close-line"></i></button></div><div class="modal-body"><div class="work-detail-grid"><div class="detail-column"><div class="detail-item"><span class="detail-label">Sr No</span><span class="detail-value" id="modalSrNo">--</span></div><div class="detail-item"><span class="detail-label">SOR</span><span class="detail-value" id="modalSor">--</span></div><div class="detail-item"><span class="detail-label">Janpad</span><span class="detail-value" id="modalJanpad">--</span></div><div class="detail-item"><span class="detail-label">Engineer</span><span class="detail-value" id="modalEngineer">--</span></div><div class="detail-item"><span class="detail-label">Panchayat</span><span class="detail-value" id="modalPanchayat">--</span></div></div><div class="detail-column"><div class="detail-item"><span class="detail-label">Work</span><span class="detail-value" id="modalWork">--</span></div><div class="detail-item"><span class="detail-label">TS Authority</span><span class="detail-value" id="modalTs">--</span></div><div class="detail-item"><span class="detail-label">AS Authority</span><span class="detail-value" id="modalAs">--</span></div><div class="detail-item"><span class="detail-label">Head</span><span class="detail-value" id="modalHead">--</span></div><div class="detail-item"><span class="detail-label">Status</span><span class="detail-value" id="modalStatus">--</span></div></div></div><div class="detail-remark"><span class="detail-label">Remark :</span> <span class="detail-value" id="modalRemark">--</span></div></div><div class="modal-footer"><button class="btn btn-warning" id="modalEditBtn" onclick="editWorkFromModal()"><i class="ri-edit-line"></i> Edit</button><button class="btn btn-primary" id="modalEstimateBtn" onclick="createEstimateFromModal()"><i class="ri-file-chart-line"></i> Estimate</button><button class="btn btn-success" id="modalValuationBtn" onclick="openValuationFromModal()" style="display:none;"><i class="ri-line-chart-line"></i> Valuation</button></div></div></div>
+
+<div class="modal-overlay" id="addSorModal">
+  <div class="modal-dialog">
+    <div class="modal-header"><h3><i class="ri-add-circle-line"></i> Add / Edit Specification</h3><button class="modal-close" onclick="closeAddSorModal()"><i class="ri-close-line"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>SOR Type</label><select id="addSorType"><option value="">-- Select --</option><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select></div>
+        <div class="form-group"><label>Code</label><input type="text" id="code" placeholder="e.g., 101"></div>
+        <div class="form-group full-width"><label>Specification</label><textarea id="addSpecText" rows="2" placeholder="Enter specification..." oninput="autoResize(this)"></textarea></div>
+        <div class="form-group"><label>Work Rate</label><input type="number" id="addRate1" placeholder="0.00"></div>
+        <div class="form-group"><label>Labour Rate</label><input type="number" id="addRate2" placeholder="0.00"></div>
+        <div class="form-group"><label>Unit</label><select id="addUnit"><option value="">-- Select --</option><option value="cum">cum</option><option value="sqm">sqm</option><option value="kg">kg</option><option value="no.">no.</option><option value="each">each</option><option value="rm">RM</option><option value="meter">meter</option><option value="litre">litre</option><option value="bag">bag</option></select></div>
+        <div class="form-group full-width" style="margin-top:10px; border-top:1px solid var(--border-color); padding-top:15px;"><label style="font-weight:600; color:var(--primary);">Material Consumption (Per Unit)</label></div>
+        <div class="form-group"><label>Metal 40mm (m³)</label><input type="number" id="specM40" step="0.001" value="0" onfocus="this.select()"></div>
+        <div class="form-group"><label>Metal 20mm (m³)</label><input type="number" id="specM20" step="0.001" value="0" onfocus="this.select()"></div>
+        <div class="form-group"><label>Metal 10mm (m³)</label><input type="number" id="specM10" step="0.001" value="0" onfocus="this.select()"></div>
+        <div class="form-group"><label>Cement (Bag)</label><input type="number" id="specCement" step="0.01" value="0" onfocus="this.select()"></div>
+        <div class="form-group"><label>Sand (m³)</label><input type="number" id="specSand" step="0.001" value="0" onfocus="this.select()"></div>
+        <div class="form-group"><label>Brick (Nos)</label><input type="number" id="specBrick" step="1" value="0" onfocus="this.select()"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="saveNewSpec()"><i class="ri-save-line"></i> Save</button><button class="btn btn-secondary" onclick="closeAddSorModal()"><i class="ri-close-line"></i> Cancel</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="specModal"><div class="modal-dialog modal-lg"><div class="modal-header"><h3><i class="ri-file-list-3-line"></i> Select Specification</h3><button class="modal-close" onclick="closeModal('specModal')"><i class="ri-close-line"></i></button></div><div class="modal-body">
+  <div class="spec-modal-sor-row"><label class="spec-modal-sor-label"><i class="ri-file-list-3-line"></i> SOR Type</label><select id="specModalSorSelect" onchange="onSpecModalSorChange()"><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select></div>
+  <div class="spec-modal-search"><i class="ri-search-line"></i><input type="text" id="specSearch" placeholder="Search..." oninput="filterSpecs()"></div>
+  <div class="spec-list-container" id="specList"></div>
+</div><div class="modal-footer"><button class="btn btn-primary" onclick="saveSelectedSpecs()"><i class="ri-check-line"></i> Add Selected</button><button class="btn btn-outline" onclick="closeModal('specModal')"><i class="ri-close-line"></i> Cancel</button></div></div></div>
+
+<div class="modal-overlay" id="headingNameModal"><div class="modal-dialog modal-sm"><div class="modal-header"><h3><i class="ri-text"></i> Add Section</h3><button class="modal-close" onclick="closeModal('headingNameModal')"><i class="ri-close-line"></i></button></div><div class="modal-body"><div class="form-group"><label>Section Name</label><input type="text" id="headingNameInput" placeholder="Enter section name..."></div></div><div class="modal-footer"><button class="btn btn-primary" onclick="saveHeadingName()"><i class="ri-save-line"></i> Save</button><button class="btn btn-secondary" onclick="closeModal('headingNameModal')"><i class="ri-close-line"></i> Cancel</button></div></div></div>
+
+<div class="modal-overlay" id="loadTemplateModal"><div class="modal-dialog modal-lg"><div class="modal-header"><h3><i class="ri-layout-4-line"></i> Load Template</h3><button class="modal-close" onclick="closeModal('loadTemplateModal')"><i class="ri-close-line"></i></button></div><div class="modal-body">
+  <div class="load-template-filters" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+   <select id="loadTemplateTypeFilter" onchange="filterLoadTemplateList()"><option value="">All Types</option><option value="UT">UT Templates</option><option value="ST">ST Templates</option></select>
+    <select id="loadTemplateSorFilter" onchange="filterLoadTemplateList()"><option value="">All SOR Types</option><option value="R.E.S. 11-04-2022">R.E.S. 11-04-2022</option></select>
+  </div>
+  <div class="template-load-list" id="templateLoadList"><div class="empty-state"><p>No templates found</p></div></div>
+</div><div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('loadTemplateModal')">Cancel</button></div></div></div>
+
+<div class="modal-overlay" id="userModal">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-header"><h3><i class="ri-user-add-line"></i> <span id="userModalTitle">Add User</span></h3><button class="modal-close" onclick="closeModal('userModal')"><i class="ri-close-line"></i></button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Type <span class="required">*</span></label><select id="userType"><option value="Owner">Owner (Admin)</option><option value="Janpad">Janpad</option><option value="Engineer">Engineer</option><option value="Panchayat">Panchayat</option></select></div>
+        <div class="form-group"><label>Name / Value <span class="required">*</span></label><input type="text" id="userValue" placeholder="e.g., JP Bhind, Er. XYZ, GP XYZ"></div>
+        <div class="form-group"><label>Parent ID (User ID of Parent)</label><input type="text" id="userParentId" placeholder="Leave blank for Owner/Janpad"></div>
+        <div class="form-group"><label>User ID <span class="required">*</span></label><input type="text" id="userUserId" placeholder="Login ID (must be unique)"></div>
+        <div class="form-group"><label>Password <span class="required">*</span></label><input type="text" id="userPassword" placeholder="Default: 123456"></div>
+        <div class="form-group"><label>Mobile</label><input type="text" id="userMobile" placeholder="Enter Your Mobile No."></div>
+        <div class="form-group full-width"><label>Gmail</label><input type="email" id="userGmail" placeholder="user@gmail.com"></div>
+        <div class="form-group"><label>Status</label><select id="userStatus"><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
+      </div>
+    </div>
+    <div id="resetDatesBtnWrap" style="padding:0 24px 12px; display:none;">
+      <button class="btn btn-warning btn-block" onclick="resetPasswordDates()" style="border-radius:10px;"><i class="ri-calendar-check-line"></i> Update Password Validity</button>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="saveUserData()"><i class="ri-save-line"></i> Save User</button><button class="btn btn-secondary" onclick="closeModal('userModal')"><i class="ri-close-line"></i> Cancel</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="printSelectionModal">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-header"><h3><i class="ri-printer-line"></i> Select Pages to Print</h3><button class="modal-close" onclick="closeModal('printSelectionModal')"><i class="ri-close-line"></i></button></div>
+    <div class="modal-body">
+      <p style="margin-bottom: 15px; color: var(--text-muted); font-size: 14px;">Select which documents you want to include in the print:</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printEstimate" style="width:18px; height:18px;"> Estimate & Summary</label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printReport" style="width:18px; height:18px;"> Technical Report</label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printAbstract" style="width:18px; height:18px;"> Abstract</label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printBOQ" style="width:18px; height:18px;"> BOQ</label>
+        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printDrawing" style="width:18px; height:18px;"> Drawing</label>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="executeSelectedPrint()"><i class="ri-printer-line"></i> Print Selected</button><button class="btn btn-secondary" onclick="closeModal('printSelectionModal')">Cancel</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="confirmModal"><div class="modal-dialog modal-sm"><div class="modal-header"><h3><i class="ri-question-line"></i> Confirm</h3></div><div class="modal-body"><p id="confirmMessage">Are you sure?</p></div><div class="modal-footer"><button class="btn btn-primary" id="confirmYesBtn">Yes</button><button class="btn btn-secondary" onclick="closeModal('confirmModal')">Cancel</button></div></div></div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<?!= include('script'); ?>
+
+</body>
+</html>
