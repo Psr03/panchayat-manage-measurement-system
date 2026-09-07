@@ -1,1 +1,2852 @@
+<script>
+// ====================== GLOBAL VARIABLES ======================
+var sectionCounter = 0;
+var tableCount = 0;
+var editIndex = null;
+var editSorType = null;
+var currentTable = null;
+var editingWorkIndex = null;
+var currentEstimateWorkIndex = null;
+var allSavedWorks = [];
+var allTemplates = [];
+var allProvisions = [];
+var currentPage = 'dashboard';
+var currentSpecTab = 'R.E.S. 11-04-2022';
+var isChangingSpec = false;
+var isTemplateBuilderMode = false;
+var editingTemplateIndex = null;
+var currentTemplateType = 'UT';
+var currentSavedWorkStatus = '';
+var currentUser = null;
+var appInitialized = false;
+var swCurrentPage = 1;
+var swRowsPerPage = 10;
+var swFilteredWorks = [];
+var isLoginInProgress = false; 
+var specModalSorType = 'R.E.S. 11-04-2022'; 
+var specOptions = { 'R.E.S. 11-04-2022': [] };
+var calcDebounceTimer = null; 
+var currentEstimateProvisions = [];
+var appNotifications = [];
+var isValuationMode = false;
+var valSectionCounter = 0;
 
+// ====================== APP LOADING OVERLAY ======================
+function showAppLoading(msg) {
+  var overlay = document.getElementById('loadingOverlay');
+  if (!overlay) return;
+  var p = overlay.querySelector('.loading-spinner p');
+  if (p) p.textContent = msg || 'Loading...';
+  overlay.classList.remove('hidden');
+}
+function hideAppLoading() {
+  var overlay = document.getElementById('loadingOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// ====================== INITIALIZATION ======================
+document.addEventListener('DOMContentLoaded', function() {
+  var loadingEl = document.getElementById('loadingOverlay');
+  if (loadingEl) loadingEl.classList.add('hidden');
+  checkSavedSession();
+  
+  var userIdEl = document.getElementById('loginUserId');
+  if(userIdEl) {
+    userIdEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('loginPassword').focus(); }
+    });
+  }
+
+  function clearLoginErrorsOnInteract() {
+    var ug = document.getElementById('userIdGroup');
+    var pg = document.getElementById('passwordGroup');
+    var ue = document.getElementById('userIdError');
+    var pe = document.getElementById('passwordError');
+    var banner = document.getElementById('loginErrorBanner');
+    if (ug) ug.classList.remove('has-error');
+    if (pg) pg.classList.remove('has-error');
+    if (ue) ue.style.display = 'none';
+    if (pe) pe.style.display = 'none';
+    if (banner) banner.classList.remove('show');
+  }
+
+  window.closeForgotInfo = function() {
+    var infoBanner = document.getElementById('forgotInfoBanner');
+    if (infoBanner) infoBanner.classList.remove('show');
+  };
+
+  ['loginUserId', 'loginPassword'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('focus', clearLoginErrorsOnInteract);
+      el.addEventListener('input', clearLoginErrorsOnInteract);
+      el.addEventListener('click', clearLoginErrorsOnInteract);
+    }
+  });
+
+  var sendOtpLink = document.getElementById('sendOtpLink');
+  if (sendOtpLink) {
+    sendOtpLink.addEventListener('click', function(e) {
+      e.preventDefault();
+      requestOtp();
+    });
+  }
+
+  document.querySelectorAll('.otp-input').forEach(function(input, index, inputs) {
+    input.addEventListener('input', function() {
+      this.value = this.value.replace(/[^0-9]/g, '');
+      if (this.value.length === 1 && index < inputs.length - 1) inputs[index + 1].focus();
+    });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Backspace' && this.value === '' && index > 0) inputs[index - 1].focus();
+      if (e.key === 'Enter') { e.preventDefault(); verifyOtp(); }
+    });
+    input.addEventListener('paste', function(e) {
+      e.preventDefault();
+      var pasteData = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+      if (pasteData.length >= 4) {
+        for (var pi = 0; pi < 4; pi++) inputs[pi].value = pasteData[pi];
+        inputs[3].focus();
+        setTimeout(function() { verifyOtp(); }, 200);
+      }
+    });
+  });
+  
+  setupEventListeners();
+});
+
+// ====================== SESSION PERSISTENCE ======================
+function checkSavedSession() {
+  var savedUser = null;
+  try {
+    savedUser = localStorage.getItem('measureProUser') || sessionStorage.getItem('measureProUser');
+  } catch(e) { console.error("Storage access error:", e); return; }
+  
+  if (savedUser) {
+    try {
+      var userData = JSON.parse(savedUser);
+      currentUser = userData;
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('appContent').style.display = 'block';
+      var loadingEl = document.getElementById('loadingOverlay');
+      if (loadingEl) loadingEl.classList.add('hidden');
+      
+      updateUserInfoUI();
+      applyRoleBasedMenuVisibility(currentUser.type);
+      checkPasswordExpiry(); 
+      
+      if (!appInitialized) { 
+        showAppLoading('Restoring your session...');
+        initializeApp(); 
+        appInitialized = true; 
+      }
+    } catch(e) {
+      console.error("Session restore parsing error:", e);
+      try { localStorage.removeItem('measureProUser'); sessionStorage.removeItem('measureProUser'); } catch(e2) {}
+    }
+  }
+}
+
+function updateUserInfoUI() {
+  if (!currentUser) return;
+  var initials = currentUser.name.split(' ').map(function(n){ return n[0]; }).join('').substring(0,2).toUpperCase();
+  document.querySelector('.user-avatar').textContent = initials;
+  document.querySelector('.user-name').textContent = currentUser.name;
+  document.querySelector('.user-role').textContent = currentUser.type + ' - ' + currentUser.janpad;
+  
+  document.getElementById('settingsUserName').value = currentUser.name;
+  document.getElementById('settingsUserRole').value = currentUser.type;
+  document.getElementById('settingsUserJanpad').value = currentUser.janpad;
+  document.getElementById('settingsUserId').value = currentUser.userId;
+  document.getElementById('settingsUserEngineer').value = currentUser.engineer || '--';
+  document.getElementById('settingsUserMobile').value = currentUser.mobile || '--';
+  document.getElementById('settingsUserGmail').value = currentUser.gmail || '--';
+  document.getElementById('settingsPwdGenDate').value = formatSafeDate(currentUser.pwdGenDate);
+  document.getElementById('settingsPwdExpDate').value = formatSafeDate(currentUser.pwdExpDate);
+  document.getElementById('settingsUserStatus').value = 'Active';
+  
+  var navSec = document.getElementById('navSecurity');
+  if (navSec) navSec.style.display = (currentUser.type === 'Owner') ? 'flex' : 'none';
+}
+
+// ====================== LOGIN SYSTEM ======================
+function loginUser() {
+  if (isLoginInProgress) return;
+  var userId = document.getElementById('loginUserId').value.trim();
+  var password = document.getElementById('loginPassword').value.trim();
+  
+  clearLoginErrors();
+  var hasError = false;
+  if (!userId) { showFieldError('userIdGroup', 'userIdError', 'User ID is required'); hasError = true; }
+  if (!password) { showFieldError('passwordGroup', 'passwordError', 'Password is required'); hasError = true; }
+  if (hasError) return;
+  
+  isLoginInProgress = true;
+  var btn = document.getElementById('loginBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  
+  google.script.run
+    .withSuccessHandler(function(response) {
+      isLoginInProgress = false;
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      
+      if (response && response.success) {
+        currentUser = response;
+        var rememberMe = document.getElementById('rememberMe').checked;
+        var storage = rememberMe ? localStorage : sessionStorage;
+        try { storage.setItem('measureProUser', JSON.stringify(response)); } catch(e) { console.error("Storage error:", e); }
+        
+        showToast("Welcome, " + currentUser.name + "!", "success");
+        addNotification('info', 'Logged in successfully as ' + currentUser.name);
+        
+        document.getElementById('loginOverlay').classList.add('hidden');
+        document.getElementById('appContent').style.display = 'block';
+        showAppLoading('Loading your data...');
+        
+        updateUserInfoUI();
+        applyRoleBasedMenuVisibility(currentUser.type);
+        checkPasswordExpiry(); 
+        
+        if (!appInitialized) { initializeApp(); appInitialized = true; }
+      } else {
+        var errorMsg = "Invalid User ID or Password!";
+        if (response && response.message) errorMsg = response.message;
+        showLoginError(errorMsg);
+        shakeLoginCard();
+      }
+    })
+    .withFailureHandler(function(e) {
+      isLoginInProgress = false;
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      showLoginError("Server Error: " + e.message);
+      shakeLoginCard();
+    })
+    .authenticateUser(userId, password);
+}
+
+function showFieldError(groupId, errorId, message) {
+  var group = document.getElementById(groupId);
+  var errorEl = document.getElementById(errorId);
+  if (group) group.classList.add('has-error');
+  if (errorEl) { errorEl.textContent = message; errorEl.style.display = 'flex'; }
+}
+function clearLoginErrors() {
+  document.querySelectorAll('.login-input-group').forEach(function(g) { g.classList.remove('has-error'); });
+  document.querySelectorAll('.login-error-msg').forEach(function(e) { e.style.display = 'none'; });
+  var banner = document.getElementById('loginErrorBanner');
+  if (banner) banner.classList.remove('show');
+  var infoBanner = document.getElementById('forgotInfoBanner');
+  if (infoBanner) infoBanner.classList.remove('show');
+}
+function showLoginError(message) {
+  var banner = document.getElementById('loginErrorBanner');
+  var text = document.getElementById('loginErrorText');
+  if (text) text.textContent = message;
+  if (banner) banner.classList.add('show');
+}
+function shakeLoginCard() {
+  var card = document.getElementById('loginCard');
+  if (!card) return;
+  card.classList.add('shake');
+  setTimeout(function() { card.classList.remove('shake'); }, 600);
+}
+function toggleLoginPassword() {
+  var passInput = document.getElementById('loginPassword');
+  var icon = document.getElementById('togglePasswordIcon');
+  if (passInput.type === 'password') { passInput.type = 'text'; icon.className = 'ri-eye-line'; }
+  else { passInput.type = 'password'; icon.className = 'ri-eye-off-line'; }
+}
+
+// ====================== ROLE-BASED MENU VISIBILITY ======================
+function applyRoleBasedMenuVisibility(userType) {
+  var isPanchayat = (userType === 'Panchayat');
+  var isEngineer = (userType === 'Engineer');
+  
+  var navTemplates = document.getElementById('navTemplates');
+  var navSpecifications = document.getElementById('navSpecifications');
+  var navSecurity = document.getElementById('navSecurity');
+  var navValuationMenu = document.getElementById('navValuationMenu'); // ✅ ID बदला गया
+  var qaTemplates = document.getElementById('qaTemplates');
+  var qaSpecifications = document.getElementById('qaSpecifications');
+  var btnAddSpec = document.getElementById('btnAddSpec');
+  
+  if (navTemplates) navTemplates.style.display = isPanchayat ? 'none' : 'flex';
+  if (qaTemplates) qaTemplates.style.display = isPanchayat ? 'none' : 'flex';
+  if (navSpecifications) navSpecifications.style.display = (isPanchayat || isEngineer) ? 'none' : 'flex';
+  if (qaSpecifications) qaSpecifications.style.display = (isPanchayat || isEngineer) ? 'none' : 'flex';
+  if (btnAddSpec) btnAddSpec.style.display = (isEngineer || isPanchayat) ? 'none' : 'block';
+  if (navSecurity) navSecurity.style.display = (userType === 'Owner') ? 'flex' : 'none';
+  if (navValuationMenu) navValuationMenu.style.display = isPanchayat ? 'none' : 'flex'; // ✅ अपडेटेड लॉजिक
+}
+
+function logoutUser() {
+  showConfirm("Are you sure you want to logout?", function() {
+    currentUser = null;
+    appInitialized = false;
+    allSavedWorks = [];
+    swFilteredWorks = [];
+    isLoginInProgress = false;
+    
+    try { localStorage.removeItem('measureProUser'); sessionStorage.removeItem('measureProUser'); } catch(e) {}
+    
+    var js = document.getElementById('janpadSelect');
+    var es = document.getElementById('engineerSelect');
+    var ps = document.getElementById('panchayatSelect');
+    if(js) { js.disabled = false; js.dataset.roleLocked = 'false'; }
+    if(es) { es.disabled = false; es.dataset.roleLocked = 'false'; }
+    if(ps) { ps.disabled = false; ps.dataset.roleLocked = 'false'; }
+    
+    document.getElementById('loginUserId').value = '';
+    document.getElementById('loginPassword').value = '';
+    clearLoginErrors(); 
+    var navSec = document.getElementById('navSecurity');
+    if (navSec) navSec.style.display = 'none';
+
+    applyRoleBasedMenuVisibility('Guest');
+    
+    document.getElementById('appContent').style.display = 'none';
+    document.getElementById('loginOverlay').classList.remove('hidden');
+    
+    document.querySelector('.user-avatar').textContent = 'SE';
+    document.querySelector('.user-name').textContent = 'Sub Engineer';
+    document.querySelector('.user-role').textContent = 'Janpad Panchayat';
+    
+    navigateTo('dashboard');
+    showToast("Logged out successfully!", "info");
+  });
+}
+
+function initializeApp() {
+  loadSpecificationsFromSheets();
+  loadDropdownData();
+  loadTemplates();
+  loadProvisions();
+  loadAllSavedWorks(); 
+  
+  var savedPage = sessionStorage.getItem('currentPage');
+  if (savedPage) navigateTo(savedPage);
+}
+
+function setupEventListeners() {
+  document.getElementById("sorSelect").addEventListener('change', updateWorkInfoSection);
+  document.getElementById("engineerSelect").addEventListener('change', updateWorkInfoSection);
+  document.getElementById("workName").addEventListener('input', updateWorkInfoSection);
+  document.getElementById("panchayatSelect").addEventListener('change', updateWorkInfoSection);
+  document.getElementById("janpadSelect").addEventListener('change', updateWorkInfoSection);
+  document.getElementById("templateSorType").addEventListener('change', function() { updateSummaryBoxBasedOnSOR(); calc(); });
+  
+  var hni = document.getElementById("headingNameInput");
+  if (hni) hni.addEventListener('keypress', function(e) { if (e.key === 'Enter') saveHeadingName(); });
+
+  var loginForm = document.getElementById('loginForm');
+  if (loginForm) {
+    loginForm.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); loginUser(); }
+    });
+  }
+
+  document.addEventListener("click", function(e) {
+    if (e.target.closest('.toggle-collapse')) {
+      var table = e.target.closest('table');
+      if (table) table.classList.toggle('collapsed');
+    }
+   
+    if (e.target.closest(".open-spec-btn")) openSpecModal(e.target.closest(".open-spec-btn"));
+    if (e.target.closest(".open-spec-btn")) openSpecModal(e.target.closest(".open-spec-btn"));
+    if (e.target.closest(".delete-heading-btn")) deleteHeadingSection(e.target.closest(".delete-heading-btn"));
+    if (e.target.closest(".add-row-btn")) addRow(e.target.closest(".add-row-btn"));
+    if (e.target.closest(".duplicate-row-btn")) duplicateRow(e.target.closest(".duplicate-row-btn"));
+    if (e.target.closest(".change-spec-btn")) changeSpecTable(e.target.closest(".change-spec-btn"));
+    if (e.target.closest(".duplicate-table-btn")) duplicateTable(e.target.closest(".duplicate-table-btn"));
+    if (e.target.closest(".move-up-btn")) moveTableUp(e.target.closest(".move-up-btn"));
+    if (e.target.closest(".move-down-btn")) moveTableDown(e.target.closest(".move-down-btn"));
+    if (e.target.closest(".delete-row-btn")) deleteRow(e.target.closest(".delete-row-btn"));
+    if (e.target.closest(".delete-table-btn")) {
+      var t = e.target.closest("table");
+      if (t) { var wr = t.closest(".table-scroll-wrapper"); if (wr) wr.remove(); updateAllTableNumbers(); calc(); }
+    }
+    if (e.target.closest(".add-deduction-btn")) addDeductionSection(e.target.closest(".add-deduction-btn"));
+    if (e.target.closest(".delete-deduction-btn")) deleteDeductionSection(e.target.closest(".delete-deduction-btn"));
+    
+    // ✅ यह लाइन जोड़ दें ताकि बाहर क्लिक करने पर नोटिफिकेशन बंद हो
+    if (!e.target.closest('#notifBtn') && !e.target.closest('.notifications-dropdown')) {
+      var notifDropdown = document.getElementById('notificationsDropdown');
+      if (notifDropdown) notifDropdown.classList.remove('show');
+    }
+  });
+
+  document.addEventListener("input", function(e) {
+    if (e.target.closest('.table-scroll-wrapper')) updateScrollHint(e.target.closest('.table-scroll-wrapper'));
+    if (e.target.classList.contains("length") || e.target.classList.contains("breadth") || e.target.classList.contains("height") || e.target.classList.contains("cf") || e.target.classList.contains("no")) {
+      clearTimeout(calcDebounceTimer);
+      calcDebounceTimer = setTimeout(function() { calc(); }, 120);
+    }
+  });
+
+  document.addEventListener("scroll", function(e) {
+    if (e.target.classList && e.target.classList.contains('table-scroll-wrapper')) updateScrollHint(e.target);
+  }, true);
+
+  document.addEventListener("focusout", function(e) {
+    if (e.target.classList.contains("length") || e.target.classList.contains("breadth") || e.target.classList.contains("height") || e.target.classList.contains("cf")) {
+      var text = e.target.textContent.trim();
+      if (text !== '' && !isNaN(parseFloat(text)) && isFinite(text) && !/[+\-*/()]/.test(text)) {
+        e.target.textContent = parseFloat(text).toFixed(3);
+      }
+      calc();
+    }
+    if (e.target.classList.contains("no")) {
+      var noText = e.target.textContent.trim();
+      if (noText !== '' && !isNaN(parseFloat(noText)) && isFinite(noText) && !/[+\-*/()]/.test(noText)) {
+        e.target.textContent = parseFloat(noText).toFixed(0);
+      }
+      calc();
+    }
+  });
+  
+  document.getElementById('mainContent').addEventListener('click', function(e) {
+    if (e.target.closest('.mobile-toggle')) return;
+    var sidebar = document.getElementById('sidebar');
+    if (window.innerWidth <= 768 && sidebar.classList.contains('mobile-open')) {
+      sidebar.classList.remove('mobile-open');
+    }
+  });
+
+  document.addEventListener("keydown", function(e) {
+    if (e.key === 'Enter' && (e.target.classList.contains("length") || e.target.classList.contains("breadth") || e.target.classList.contains("height") || e.target.classList.contains("cf") || e.target.classList.contains("no"))) {
+      e.preventDefault();
+      var text = e.target.textContent.trim();
+      if (e.target.classList.contains("no")) {
+        if (text !== '' && !isNaN(parseFloat(text)) && isFinite(text) && !/[+\-*/()]/.test(text)) e.target.textContent = parseFloat(text).toFixed(0);
+      } else {
+        if (text !== '' && !isNaN(parseFloat(text)) && isFinite(text) && !/[+\-*/()]/.test(text)) e.target.textContent = parseFloat(text).toFixed(3);
+      }
+      calc();
+      var row = e.target.closest("tr");
+      if (row) {
+        var nextRow = row.nextElementSibling;
+        if (nextRow) {
+          var nextInput = nextRow.querySelector("td[contenteditable='true'].length") || nextRow.querySelector("td[contenteditable='true']");
+          if (nextInput) nextInput.focus();
+        }
+      }
+    }
+  });
+}
+
+function setupWorkDetailTabs() {
+  var reportTab = document.querySelector('#page-workDetail .wd-tab-btn[data-tab="report"]');
+  var drawingTab = document.querySelector('#page-workDetail .wd-tab-btn[data-tab="drawing"]');
+  // ✅ वैल्यूएशन टैब अब अलग पेज पर है, इसलिए उसका लॉजिक हटा दिया गया है
+  if (reportTab) reportTab.style.display = '';
+  if (drawingTab) drawingTab.style.display = '';
+}
+
+// ====================== NAVIGATION ======================
+function navigateTo(page) {
+  if (page === 'security' && (!currentUser || currentUser.type !== 'Owner')) {
+    showToast("Access Denied! Only Owner can view this page.", "error");
+    return;
+  }
+  currentPage = page;
+  sessionStorage.setItem('currentPage', page);
+  isTemplateBuilderMode = (page === 'templateBuilder');
+  
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  var tp = document.getElementById('page-' + page);
+  if (tp) tp.classList.add('active');
+  
+  document.querySelectorAll('.nav-item').forEach(function(item) { item.classList.remove('active'); });
+  document.querySelectorAll('.nav-subitem').forEach(function(item) { item.classList.remove('active'); });
+  document.querySelectorAll('.nav-submenu.open').forEach(function(sm) { sm.style.maxHeight = '0px'; sm.classList.remove('open'); });
+  document.querySelectorAll('.has-submenu.open').forEach(function(hs) { hs.classList.remove('open'); });
+  
+  var activeNavPage = page, openSubmenuId = null, highlightStatus = null, highlightTplType = null;
+  
+  if (page === 'newWork' || page === 'workDetail') {
+    activeNavPage = 'savedWorks';
+    openSubmenuId = 'savedWorksSubmenu';
+    if (page === 'workDetail') highlightStatus = currentSavedWorkStatus || '';
+  }
+  if (page === 'templateBuilder') {
+    activeNavPage = 'templates';
+    openSubmenuId = 'templateSubmenu';
+    highlightTplType = currentTemplateType || 'UT';
+  }
+
+  if (page === 'valuation') {
+    var valMenu = document.getElementById('navValuationMenu');
+    if (valMenu) valMenu.classList.add('active');
+  } else {
+    var ni = document.querySelector('.nav-item[data-page="' + activeNavPage + '"]');
+    if (ni) ni.classList.add('active');
+  }
+  
+  if (openSubmenuId) {
+    var submenu = document.getElementById(openSubmenuId);
+    if (submenu) { submenu.classList.add('open'); submenu.style.maxHeight = submenu.scrollHeight + "px"; }
+    var parentItem = document.querySelector('.has-submenu[data-page="' + activeNavPage + '"]');
+    if (parentItem) parentItem.classList.add('open');
+  }
+  
+  if (highlightStatus !== null && openSubmenuId === 'savedWorksSubmenu') {
+    document.querySelectorAll('#savedWorksSubmenu .nav-subitem').forEach(function(item) {
+      if (item.getAttribute('data-status') === highlightStatus) item.classList.add('active');
+    });
+  }
+  if (highlightTplType && openSubmenuId === 'templateSubmenu') {
+    document.querySelectorAll('#templateSubmenu .nav-subitem').forEach(function(item) {
+      if (item.getAttribute('data-tpl-type') === highlightTplType) item.classList.add('active');
+    });
+  }
+  
+  var titles = { 'dashboard':'Dashboard','newWork':'New Work','savedWorks':'Saved Works','specifications':'Specifications','settings':'Settings','workDetail': 'Work Estimate','report':'Technical Report','templates':'Templates','templateBuilder':'Template Builder', 'valuation':'Work Valuation' };
+  document.getElementById('pageTitle').textContent = titles[page] || page;
+  
+  if (page === 'savedWorks') loadSavedWorks();
+  if (page === 'specifications') loadSpecPageList(currentSpecTab);
+  if (page === 'dashboard') loadDashboardStats();
+  if (page === 'templates') filterTemplateGrid();
+  if (page === 'security') loadUsersForAdmin();
+  if (page === 'workDetail') setupWorkDetailTabs();
+  
+  document.getElementById('sidebar').classList.remove('mobile-open');
+}
+
+function navigateToTemplates(type) {
+  currentTemplateType = type || 'UT';
+  navigateTo('templates');
+  document.querySelectorAll('.nav-subitem').forEach(function(item) {
+    item.classList.remove('active');
+    if (item.getAttribute('data-tpl-type') === currentTemplateType) item.classList.add('active');
+  });
+  var submenu = document.getElementById('templateSubmenu');
+  if (submenu) { submenu.classList.add('open'); submenu.style.maxHeight = submenu.scrollHeight + "px"; }
+  var parentItem = document.querySelector('.has-submenu');
+  if (parentItem) parentItem.classList.add('open');
+
+  setTimeout(function() {
+    document.querySelectorAll('.tpl-type-tab').forEach(function(tab) {
+      tab.classList.remove('active');
+      if (tab.getAttribute('data-type') === currentTemplateType) tab.classList.add('active');
+    });
+    filterTemplateGrid();
+  }, 50);
+}
+
+function navigateToSavedWorks(status) {
+  isValuationMode = false;
+  currentSavedWorkStatus = status || '';
+  navigateTo('savedWorks');
+  document.querySelectorAll('#savedWorksSubmenu .nav-subitem').forEach(function(item) {
+    item.classList.remove('active');
+    if (item.getAttribute('data-status') === currentSavedWorkStatus) item.classList.add('active');
+  });
+  var submenu = document.getElementById('savedWorksSubmenu');
+  if (submenu) { submenu.classList.add('open'); submenu.style.maxHeight = submenu.scrollHeight + "px"; }
+  var parentItem = document.querySelector('.nav-item.has-submenu[data-page="savedWorks"]');
+  if (parentItem) parentItem.classList.add('open');
+}
+
+function navigateToValuationList() {
+  isValuationMode = false;
+  currentSavedWorkStatus = 'Valuation';
+  
+  currentPage = 'savedWorks';
+  sessionStorage.setItem('currentPage', 'savedWorks');
+  isTemplateBuilderMode = false;
+  
+  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  var tp = document.getElementById('page-savedWorks');
+  if (tp) tp.classList.add('active');
+  
+  // सभी मेन्यू हाइलाइट्स हटाएँ
+  document.querySelectorAll('.nav-item').forEach(function(item) { item.classList.remove('active'); });
+  document.querySelectorAll('.nav-subitem').forEach(function(item) { item.classList.remove('active'); });
+  
+  // Works वाला सबमेन्यू बंद रखें
+  document.querySelectorAll('.nav-submenu.open').forEach(function(sm) { sm.style.maxHeight = '0px'; sm.classList.remove('open'); });
+  document.querySelectorAll('.has-submenu.open').forEach(function(hs) { hs.classList.remove('open'); });
+  
+  // सिर्फ Valuation मेन्यू को हाइलाइट करें
+  var ni = document.getElementById('navValuationMenu');
+  if (ni) ni.classList.add('active');
+  
+  document.getElementById('pageTitle').textContent = 'Valuation Works';
+  loadSavedWorks();
+  document.getElementById('sidebar').classList.remove('mobile-open');
+}
+
+function toggleSubmenu(el) {
+  var submenu = el.nextElementSibling;
+  if (!submenu || !submenu.classList.contains('nav-submenu')) return;
+  var isOpen = submenu.classList.contains('open');
+  document.querySelectorAll('.nav-submenu.open').forEach(function(sm) { sm.style.maxHeight = '0px'; sm.classList.remove('open'); });
+  document.querySelectorAll('.has-submenu.open').forEach(function(hs) { hs.classList.remove('open'); });
+  if (!isOpen) {
+    submenu.classList.add('open');
+    el.classList.add('open');
+    submenu.style.maxHeight = submenu.scrollHeight + "px";
+  }
+}
+
+function toggleSidebar() { var s = document.getElementById('sidebar'); if (window.innerWidth <= 768) s.classList.toggle('mobile-open'); else s.classList.toggle('collapsed'); }
+function toggleNotifications() { document.getElementById('notificationsDropdown').classList.toggle('show'); }
+function addNotification(type, message) {
+  var time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  appNotifications.unshift({ type: type, message: message, time: time });
+  renderNotifications();
+}
+function renderNotifications() {
+  var list = document.getElementById('notifList');
+  var badge = document.getElementById('notifCountBadge');
+  if (appNotifications.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:30px;"><i class="ri-notification-off-line" style="font-size:32px; opacity:0.3;"></i><p>No new notifications</p></div>';
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+  if (badge) { badge.textContent = appNotifications.length; badge.style.display = 'flex'; }
+  var icons = { success: 'ri-check-line', warning: 'ri-alert-line', info: 'ri-information-line', error: 'ri-close-line' };
+  list.innerHTML = appNotifications.map(function(n) {
+    return '<div class="notif-item ' + n.type + '"><div class="notif-icon"><i class="' + (icons[n.type] || icons.info) + '"></i></div><div class="notif-text"><p>' + n.message + '</p><span>' + n.time + '</span></div></div>';
+  }).join('');
+}
+function clearNotifications() { appNotifications = []; renderNotifications(); }
+
+function openNewWorkForm() {
+  editingWorkIndex = null;
+  currentEstimateWorkIndex = null;
+  ['sorSelect', 'workName', 'ts', 'as', 'head1', 'head2', 'msg'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  
+  var js = document.getElementById('janpadSelect');
+  var es = document.getElementById('engineerSelect');
+  var ps = document.getElementById('panchayatSelect');
+  
+  var janpadLocked = js.dataset.roleLocked === 'true';
+  var engineerLocked = es.dataset.roleLocked === 'true';
+  var panchayatLocked = ps.dataset.roleLocked === 'true';
+  
+  if (!janpadLocked) {
+    js.value = '';
+    es.innerHTML = '<option value="">-- Select Engineer --</option>';
+    ps.innerHTML = '<option value="">-- Select Panchayat --</option>';
+  } else if (!engineerLocked) {
+    es.innerHTML = '<option value="">-- Select Engineer --</option>';
+    ps.innerHTML = '<option value="">-- Select Panchayat --</option>';
+    updateEngineerOptions(null);
+  } else if (!panchayatLocked) {
+    ps.innerHTML = '<option value="">-- Select Panchayat --</option>';
+    updatePanchayatOptions(null);
+  } else {
+    updateEngineerOptions(currentUser.engineer, function() {
+      updatePanchayatOptions(currentUser.name, function() { updateWorkInfoSection(); });
+    });
+  }
+  
+  var btn = document.getElementById('saveWorkBtn');
+  if (btn) { btn.innerHTML = '<i class="ri-save-line"></i> Save Work'; btn.onclick = saveWorkDetail; }
+  updateWorkInfoSection();
+  navigateTo('newWork');
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().then(function() {
+      document.body.classList.add('is-fullscreen');
+      var btn = document.querySelector('.fullscreen-btn i');
+      if (btn) btn.className = 'ri-fullscreen-exit-line';
+      showToast('Fullscreen mode enabled', 'info');
+    }).catch(function(err) { showToast('Fullscreen not supported', 'warning'); });
+  } else {
+    document.exitFullscreen().then(function() {
+      document.body.classList.remove('is-fullscreen');
+      var btn = document.querySelector('.fullscreen-btn i');
+      if (btn) btn.className = 'ri-fullscreen-line';
+    });
+  }
+}
+document.addEventListener('fullscreenchange', function() {
+  if (!document.fullscreenElement) {
+    document.body.classList.remove('is-fullscreen');
+    var btn = document.querySelector('.fullscreen-btn i');
+    if (btn) btn.className = 'ri-fullscreen-line';
+  }
+});
+
+function showToast(message, type) {
+  type = type || 'info';
+  var c = document.getElementById('toastContainer');
+  var icons = { success:'ri-check-line', error:'ri-error-warning-line', warning:'ri-alert-line', info:'ri-information-line' };
+  var t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.innerHTML = '<i class="' + (icons[type] || icons.info) + '"></i><span class="toast-message">' + message + '</span><button class="toast-close" onclick="dismissToast(this)"><i class="ri-close-line"></i></button>';
+  c.appendChild(t);
+  setTimeout(function() { 
+    if (t.parentNode) { t.classList.add('toast-exit'); setTimeout(function() { if (t.parentNode) t.remove(); }, 300); }
+  }, 4000);
+}
+function dismissToast(closeBtn) {
+  var toast = closeBtn.closest('.toast');
+  if (toast) { toast.classList.add('toast-exit'); setTimeout(function() { if (toast.parentNode) toast.remove(); }, 300); }
+}
+function showConfirm(message, onYes) {
+  document.getElementById('confirmMessage').textContent = message;
+  var yesBtn = document.getElementById('confirmYesBtn');
+  var newBtn = yesBtn.cloneNode(true);
+  yesBtn.parentNode.replaceChild(newBtn, yesBtn);
+  newBtn.id = 'confirmYesBtn';
+  newBtn.addEventListener('click', function() { closeModal('confirmModal'); if (onYes) onYes(); });
+  openModal('confirmModal');
+}
+
+function getRoleFilteredWorks(works) {
+  if (!currentUser || !works) return works || [];
+  var filtered = works;
+  if (currentUser.type === "Panchayat") filtered = works.filter(function(w) { return w.Panchayat === currentUser.name; });
+  else if (currentUser.type === "Engineer") filtered = works.filter(function(w) { return w.Engineer === currentUser.name; });
+  else if (currentUser.type === "Janpad") filtered = works.filter(function(w) { return w.Janpad === currentUser.janpad; });
+  return filtered;
+}
+
+function loadAllSavedWorks(callback) {
+  google.script.run.withSuccessHandler(function(sw) {
+    allSavedWorks = sw || [];
+    updateDashboardFromSavedWorks();
+    if (currentPage === 'savedWorks') populateSearchDropdowns();
+    if (callback) callback();
+    hideAppLoading();
+  }).withFailureHandler(function(e) { console.error("Error loading works:", e); hideAppLoading(); }).getSavedWorks();
+}
+
+function loadSavedWorks() { loadAllSavedWorks(); }
+function loadDashboardStats() {
+  if (allSavedWorks.length > 0) updateDashboardFromSavedWorks();
+  else loadAllSavedWorks();
+}
+
+function updateDashboardFromSavedWorks() {
+  if (!currentUser) return;
+  var roleWorks = getRoleFilteredWorks(allSavedWorks);
+  var totalWorks = roleWorks.length;
+  var inboxWorks = roleWorks.filter(function(w) { return w.Status === 'Inbox'; }).length;
+  var draftWorks = roleWorks.filter(function(w) { return w.Status === 'Draft'; }).length;
+  var estimatedWorks = roleWorks.filter(function(w) { return w.Status === 'Estimated'; }).length;
+  var valuationWorks = roleWorks.filter(function(w) { return w.Status === 'Valuation'; }).length;
+  var recentWorks = roleWorks.slice(-5).reverse();
+  
+  document.getElementById('statTotalWorks').textContent = totalWorks;
+  var inboxStatEl = document.getElementById('statInboxWorks');
+  if (inboxStatEl) inboxStatEl.textContent = inboxWorks;
+  document.getElementById('statDraftWorks').textContent = draftWorks;
+  document.getElementById('statEstimatedWorks').textContent = estimatedWorks;
+  
+  var valStatEl = document.getElementById('statValuationWorks');
+  if (valStatEl) valStatEl.textContent = valuationWorks;
+  
+  document.getElementById('workCountBadge').textContent = totalWorks;
+  
+  var inboxBadge = document.getElementById('inboxCountBadge');
+  if (inboxBadge) inboxBadge.textContent = inboxWorks;
+  
+  var rl = document.getElementById('recentWorksList');
+  if (recentWorks.length > 0) {
+    rl.innerHTML = recentWorks.map(function(w) {
+      var oi = allSavedWorks.indexOf(w);
+      var sc = w.Status === 'Estimated' ? 'estimated' : w.Status === 'Valuation' ? 'valuation' : w.Status === 'Inbox' ? 'inbox' : 'draft';
+      return '<div class="recent-work-item" onclick="viewWorkDetail(' + oi + ')"><div class="recent-work-info"><h4>' + (w.Work || 'Untitled') + '</h4><p>' + w.Panchayat + ' - ' + w.Janpad + '</p></div><span class="status-badge ' + sc + '">' + (w.Status || 'Draft') + '</span></div>';
+    }).join('');
+  } else {
+    rl.innerHTML = '<div class="empty-state"><i class="ri-folder-open-line"></i><p>No works yet.</p></div>';
+  }
+}
+
+function formatNumber(n) { if(n>=10000000) return (n/10000000).toFixed(2)+' Cr'; if(n>=100000) return (n/100000).toFixed(2)+' L'; if(n>=1000) return (n/1000).toFixed(2)+' K'; return n.toFixed(2); }
+function formatIndianCurrency(n) {
+  if (n === 0) return '0.00';
+  var isNeg = n < 0; n = Math.abs(n);
+  var parts = n.toFixed(2).split('.');
+  var intPart = parts[0], decPart = parts[1];
+  if (intPart.length <= 3) return (isNeg ? '-' : '') + intPart + '.' + decPart;
+  var last3 = intPart.substring(intPart.length - 3);
+  var rest = intPart.substring(0, intPart.length - 3);
+  var formatted = '';
+  while (rest.length > 2) { formatted = ',' + rest.substring(rest.length - 2) + formatted; rest = rest.substring(0, rest.length - 2); }
+  formatted = rest + formatted + ',' + last3;
+  return (isNeg ? '-' : '') + formatted + '.' + decPart;
+}
+function getWorkAmount(w) {
+  var a = parseFloat(w['Total Amount']) || 0;
+  if (a > 0) return a;
+  var estStr = w['Estimate Data'];
+  if (!estStr || String(estStr).trim() === '') return 0;
+  try {
+    var ed = JSON.parse(estStr);
+    var gt1 = 0;
+    if (ed.sections) {
+      ed.sections.forEach(function(sec) {
+        if (sec.specs) {
+          sec.specs.forEach(function(sp) {
+            var qty = 0;
+            if (sp.measurements) {
+              sp.measurements.forEach(function(m) {
+                var no = String(m.no || '').trim() ? safeMathEval(String(m.no)) : 1;
+                var l = String(m.l || '').trim() ? safeMathEval(String(m.l)) : 1;
+                var b = String(m.b || '').trim() ? safeMathEval(String(m.b)) : 1;
+                var h = String(m.h || '').trim() ? safeMathEval(String(m.h)) : 1;
+                var cf = String(m.cf || '').trim() ? safeMathEval(String(m.cf)) : 1;
+                var q = no * l * b * h * cf;
+                if (m.isDeduction) q = -q;
+                qty += q;
+              });
+            }
+            gt1 += qty * (parseFloat(sp.rate1) || 0);
+          });
+        }
+      });
+    }
+    var cib = 0, extra = 0;
+    if (ed.summary) { cib = parseFloat(ed.summary.cib) || 0; extra = parseFloat(ed.summary.extraWork) || 0; }
+    var sub = gt1 + cib + extra;
+    var elecAmt = 0, saniAmt = 0, totalAmt = sub, dedAmt = 0, gstAmt = 0, contAmt = 0;
+    if (ed.summary) {
+      var em = (ed.summary.elecLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (em) elecAmt = (sub * parseFloat(em[1])) / 100;
+      var sm = (ed.summary.saniLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (sm) saniAmt = (sub * parseFloat(sm[1])) / 100;
+      totalAmt = sub + elecAmt + saniAmt;
+      var dm = (ed.summary.deductLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (dm) dedAmt = (totalAmt * parseFloat(dm[1])) / 100;
+      var gm = (ed.summary.gstLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (gm) gstAmt = ((totalAmt - dedAmt) * parseFloat(gm[1])) / 100;
+      var cm = (ed.summary.contLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (cm) contAmt = ((totalAmt - dedAmt) * parseFloat(cm[1])) / 100;
+    }
+    return totalAmt - dedAmt + gstAmt + contAmt;
+  } catch(e) { return 0; }
+}
+
+// ✅ यह फंक्शन किसी भी डेटा (Estimate या Valuation) से अमाउंट निकालेगा
+function getAmountFromData(w, dataKey) {
+  var dataStr = w[dataKey];
+  if (!dataStr || String(dataStr).trim() === '') return 0;
+  try {
+    var ed = JSON.parse(dataStr);
+    var gt1 = 0;
+    if (ed.sections) {
+      ed.sections.forEach(function(sec) {
+        if (sec.specs) {
+          sec.specs.forEach(function(sp) {
+            var qty = 0;
+            if (sp.measurements) {
+              sp.measurements.forEach(function(m) {
+                var no = String(m.no || '').trim() ? safeMathEval(String(m.no)) : 1;
+                var l = String(m.l || '').trim() ? safeMathEval(String(m.l)) : 1;
+                var b = String(m.b || '').trim() ? safeMathEval(String(m.b)) : 1;
+                var h = String(m.h || '').trim() ? safeMathEval(String(m.h)) : 1;
+                var cf = String(m.cf || '').trim() ? safeMathEval(String(m.cf)) : 1;
+                var q = no * l * b * h * cf;
+                if (m.isDeduction) q = -q;
+                qty += q;
+              });
+            }
+            gt1 += qty * (parseFloat(sp.rate1) || 0);
+          });
+        }
+      });
+    }
+    var cib = 0, extra = 0;
+    if (ed.summary) { cib = parseFloat(ed.summary.cib) || 0; extra = parseFloat(ed.summary.extraWork) || 0; }
+    var sub = gt1 + cib + extra;
+    var elecAmt = 0, saniAmt = 0, totalAmt = sub, dedAmt = 0, gstAmt = 0, contAmt = 0;
+    if (ed.summary) {
+      var em = (ed.summary.elecLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (em) elecAmt = (sub * parseFloat(em[1])) / 100;
+      var sm = (ed.summary.saniLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (sm) saniAmt = (sub * parseFloat(sm[1])) / 100;
+      totalAmt = sub + elecAmt + saniAmt;
+      var dm = (ed.summary.deductLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (dm) dedAmt = (totalAmt * parseFloat(dm[1])) / 100;
+      var gm = (ed.summary.gstLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (gm) gstAmt = ((totalAmt - dedAmt) * parseFloat(gm[1])) / 100;
+      var cm = (ed.summary.contLabel || '').match(/(\d+(\.\d+)?)\s*%/); if (cm) contAmt = ((totalAmt - dedAmt) * parseFloat(cm[1])) / 100;
+    }
+    return totalAmt - dedAmt + gstAmt + contAmt;
+  } catch(e) { return 0; }
+}
+
+function loadProvisions() { google.script.run.withSuccessHandler(function(p) { allProvisions = p; }).getProvisions(); }
+
+// ====================== SPECIFICATIONS ======================
+function loadSpecificationsFromSheets() {
+  google.script.run.withSuccessHandler(function(s) { 
+    specOptions['R.E.S. 11-04-2022'] = s; 
+    if(currentPage === 'specifications' && currentSpecTab === 'R.E.S. 11-04-2022') loadSpecPageList('R.E.S. 11-04-2022');
+  }).getSpecifications('R.E.S. 11-04-2022');
+}
+
+function switchSpecTab(btn, sorType) { currentSpecTab = sorType; document.querySelectorAll('.spec-tab').forEach(function(t) { t.classList.remove('active'); }); btn.classList.add('active'); loadSpecPageList(sorType); }
+function loadSpecPageList(sorType) {
+  var tb = document.getElementById('specPageTableBody');
+  if (!specOptions[sorType] || specOptions[sorType].length === 0) { tb.innerHTML = '<tr><td colspan="7" class="empty-row">No specifications found</td></tr>'; return; }
+  var sorted = specOptions[sorType].slice().sort(function(a,b) { var ca=isNaN(a.code)?a.code:parseInt(a.code),cb=isNaN(b.code)?b.code:parseInt(b.code); if(typeof ca==='number'&&typeof cb==='number') return ca-cb; if(typeof ca==='number') return -1; if(typeof cb==='number') return 1; return ca.toString().localeCompare(cb.toString()); });
+  tb.innerHTML = sorted.map(function(item, idx) { var oi=specOptions[sorType].indexOf(item); return '<tr><td style="text-align:center;">'+(idx+1)+'</td><td><strong>'+item.code+'</strong></td><td>'+item.spec+'</td><td class="text-right">'+item.rate1+'</td><td class="text-right">'+item.rate2+'</td><td>'+item.unit+'</td><td><div class="action-btns"><button class="btn-icon" onclick="editSpec(\''+sorType+'\','+oi+')" title="Edit"><i class="ri-edit-line"></i></button><button class="btn-icon" onclick="deleteSpec(\''+sorType+'\','+oi+')" title="Delete" style="color:var(--danger)"><i class="ri-delete-bin-line"></i></button></div></td></tr>'; }).join('');
+}
+function filterSpecPageList() { var f=document.getElementById('specPageSearch').value.toLowerCase(); document.querySelectorAll('#specPageTableBody tr').forEach(function(r) { r.style.display=r.textContent.toLowerCase().includes(f)?'':'none'; }); }
+function updateSpecOptions() { var sor=document.getElementById("sorSelect").value; if(sor) loadSpecificationsForSelectedSor(sor); updateSummaryBoxBasedOnSOR(); calc(); }
+function loadSpecificationsForSelectedSor(sorType) {
+  google.script.run.withSuccessHandler(function(specs) {
+    specOptions[sorType] = specs;
+    var ds = document.getElementById("displaySor");
+    if (ds) { var ss = document.getElementById("sorSelect"); ds.textContent = ss.options[ss.selectedIndex] ? ss.options[ss.selectedIndex].text : "--"; }
+    var specModal = document.getElementById('specModal');
+    if (specModal && specModal.classList.contains('show') && specModalSorType === sorType) updateSpecSelect(sorType);
+    if (currentPage === 'specifications' && currentSpecTab === sorType) loadSpecPageList(sorType);
+  }).getSpecifications(sorType);
+}
+
+// ====================== WORK DETAIL FORM ======================
+function updateWorkInfoSection() {
+  function sv(id,v){var el=document.getElementById(id);if(el)el.textContent=v||'--';}
+  var ss=document.getElementById("sorSelect"); sv("displaySor",ss.options[ss.selectedIndex]?ss.options[ss.selectedIndex].text:'');
+  var es=document.getElementById("engineerSelect"); sv("displayEngineer",es.options[es.selectedIndex]?es.options[es.selectedIndex].text:'');
+  sv("displayWorkName",document.getElementById("workName").value);
+  var ps=document.getElementById("panchayatSelect"); sv("displayPanchayat",ps.options[ps.selectedIndex]?ps.options[ps.selectedIndex].text:'');
+  var js=document.getElementById("janpadSelect"); var jt=js.options[js.selectedIndex]?js.options[js.selectedIndex].text:'--'; sv("displayJanpad",jt);
+  ['signatureJanpad1','signatureJanpad2','signatureJanpad3','signatureJanpad4','signatureJanpad5'].forEach(function(id){sv(id,jt);});
+}
+function updateEngineerOptions(selEng, callback) {
+  var j = document.getElementById('janpadSelect').value;
+  var es = document.getElementById('engineerSelect');
+  es.innerHTML = '<option value="">Loading...</option>'; es.disabled = true;
+  if (j) {
+    google.script.run.withSuccessHandler(function (engs) {
+      es.innerHTML = '<option value="">-- Select Engineer --</option>';
+      if (engs && engs.length > 0) engs.forEach(function (e) { var o = document.createElement('option'); o.value = e; o.textContent = e; es.appendChild(o); });
+      else es.innerHTML = '<option value="" disabled>No engineers found</option>';
+      if (selEng) es.value = selEng;
+      if (!es.dataset.roleLocked || es.dataset.roleLocked === 'false') es.disabled = false;
+      if (!callback) updatePanchayatOptions();
+      updateWorkInfoSection();
+      if (callback) callback();
+    }).getEngineersForJanpad(j);
+  } else {
+    es.innerHTML = '<option value="">-- Select Engineer --</option>'; es.disabled = false;
+    updatePanchayatOptions(); if (callback) callback();
+  }
+}
+function updatePanchayatOptions(selPan, callback) {
+  var j = document.getElementById('janpadSelect').value;
+  var e = document.getElementById('engineerSelect').value;
+  var ps = document.getElementById('panchayatSelect');
+  ps.innerHTML = '<option value="">Loading...</option>'; ps.disabled = true;
+  if (j && e) {
+    google.script.run.withSuccessHandler(function (pcs) {
+      ps.innerHTML = '<option value="">-- Select Panchayat --</option>';
+      if (pcs && pcs.length > 0) pcs.sort().forEach(function (p) { var o = document.createElement('option'); o.value = p; o.textContent = p; ps.appendChild(o); });
+      else ps.innerHTML = '<option value="" disabled>No panchayats found</option>';
+      if (selPan) ps.value = selPan;
+      if (!ps.dataset.roleLocked || ps.dataset.roleLocked === 'false') ps.disabled = false;
+      updateWorkInfoSection(); if (callback) callback();
+    }).getPanchayatsForEngineer(j, e);
+  } else {
+    ps.innerHTML = '<option value="">-- Select Panchayat --</option>'; ps.disabled = false; if (callback) callback();
+  }
+}
+function applyRoleRestrictions() {
+  if (!currentUser) return;
+  showAppLoading('Setting up your workspace...');
+  var type = currentUser.type, janpad = currentUser.janpad || '', engineer = currentUser.engineer || '', panchayat = currentUser.name || '';
+  var js = document.getElementById('janpadSelect'), es = document.getElementById('engineerSelect'), ps = document.getElementById('panchayatSelect');
+  js.disabled = false; js.dataset.roleLocked = 'false'; es.disabled = false; es.dataset.roleLocked = 'false'; ps.disabled = false; ps.dataset.roleLocked = 'false';
+  if (type === "Owner" || type === "Admin") hideAppLoading();
+  else if (type === "Janpad") { js.value = janpad; js.disabled = true; js.dataset.roleLocked = 'true'; updateEngineerOptions(null, function() { hideAppLoading(); }); }
+  else if (type === "Engineer") {
+    js.value = janpad; js.disabled = true; js.dataset.roleLocked = 'true';
+    updateEngineerOptions(engineer, function() {
+      es.value = engineer; es.disabled = true; es.dataset.roleLocked = 'true';
+      updatePanchayatOptions(null, function() { hideAppLoading(); });
+    });
+  } else if (type === "Panchayat") {
+    js.value = janpad; js.disabled = true; js.dataset.roleLocked = 'true';
+    updateEngineerOptions(engineer, function() {
+      es.value = engineer; es.disabled = true; es.dataset.roleLocked = 'true';
+      updatePanchayatOptions(panchayat, function() {
+        ps.value = panchayat; ps.disabled = true; ps.dataset.roleLocked = 'true'; hideAppLoading();
+      });
+    });
+  } else hideAppLoading();
+}
+function saveWorkDetail() {
+  var sor=document.getElementById("sorSelect").value,janpad=document.getElementById("janpadSelect").value,eng=document.getElementById("engineerSelect").value,pan=document.getElementById("panchayatSelect").value,wn=document.getElementById("workName").value,ts=document.getElementById("ts").value,as=document.getElementById("as").value,h1=document.getElementById("head1").value,h2=document.getElementById("head2").value,msg=document.getElementById("msg").value;
+  if(!sor||!janpad||!eng||!pan||!wn||!h1||!ts||!as){showToast("Please fill all required fields!","warning");return;}
+  var head=h1&&h2?h1+' + '+h2:h1||h2||"";
+  google.script.run.withSuccessHandler(function(){showToast("Work saved!","success");addNotification('success', 'New work "' + wn + '" created successfully.');resetWorkDetailForm();navigateTo('savedWorks');}).withFailureHandler(function(e){showToast(e.message,"error");}).saveWork(sor,janpad,eng,pan,wn,ts,as,head,msg,"Inbox");
+}
+function updateWorkDetail() {
+  var sor=document.getElementById("sorSelect").value,janpad=document.getElementById("janpadSelect").value,eng=document.getElementById("engineerSelect").value,pan=document.getElementById("panchayatSelect").value,wn=document.getElementById("workName").value,ts=document.getElementById("ts").value,as=document.getElementById("as").value,h1=document.getElementById("head1").value,h2=document.getElementById("head2").value,msg=document.getElementById("msg").value;
+  if(!sor||!janpad||!eng||!pan||!wn){showToast("Please fill all required fields!","warning");return;}
+  var head=h1&&h2?h1+' + '+h2:h1||h2||"";
+  google.script.run.withSuccessHandler(function(){showToast("Work updated!","success");resetWorkDetailForm();editingWorkIndex=null;var b=document.getElementById('saveWorkBtn');b.innerHTML='<i class="ri-save-line"></i> Save Work';b.onclick=saveWorkDetail;navigateTo('savedWorks');}).withFailureHandler(function(e){showToast(e.message,"error");}).updateWork(editingWorkIndex,sor,janpad,eng,pan,wn,ts,as,head,msg);
+}
+function resetWorkDetailForm() {
+  ['sorSelect', 'workName', 'ts', 'as', 'head1', 'head2', 'msg'].forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  var js = document.getElementById('janpadSelect'), es = document.getElementById('engineerSelect'), ps = document.getElementById('panchayatSelect');
+  var janpadLocked = js.dataset.roleLocked === 'true', engineerLocked = es.dataset.roleLocked === 'true';
+  if (!janpadLocked) { js.value = ''; es.innerHTML = '<option value="">-- Select Engineer --</option>'; ps.innerHTML = '<option value="">-- Select Panchayat --</option>'; updateWorkInfoSection(); }
+  else {
+    var savedEng = engineerLocked ? es.value : null;
+    var savedPan = (ps.dataset.roleLocked === 'true') ? (ps.value || (currentUser ? currentUser.name : null)) : null;
+    ps.innerHTML = '<option value="">-- Select Panchayat --</option>';
+    updateEngineerOptions(savedEng, function() { updatePanchayatOptions(savedPan, function() { updateWorkInfoSection(); }); });
+  }
+}
+
+// ====================== SAVED WORKS ======================
+function populateSearchDropdowns() {
+  var roleFiltered = getRoleFilteredWorks(allSavedWorks);
+  var ps = document.getElementById('searchPanchayat'), currentVal = ps.value;
+  ps.innerHTML = '<option value="">All</option>';
+  var panchayatSource = (currentUser && (currentUser.type === "Owner" || currentUser.type === "Admin")) ? allSavedWorks : roleFiltered;
+  var uP = [];
+  panchayatSource.forEach(function(w) { if (w.Panchayat && uP.indexOf(w.Panchayat) === -1) uP.push(w.Panchayat); });
+  uP.sort();
+  uP.forEach(function(p) { var o = document.createElement('option'); o.value = p; o.textContent = p; ps.appendChild(o); });
+  if (currentVal && uP.indexOf(currentVal) !== -1) ps.value = currentVal;
+  if (currentUser && currentUser.type === "Panchayat") { ps.value = currentUser.name; ps.disabled = true; } else ps.disabled = false;
+  var searchInput = document.getElementById('searchWork'); if (searchInput && searchInput.tagName === 'INPUT') searchInput.value = '';
+  filterSavedWorks();
+}
+function filterSavedWorks() {
+  var pf = document.getElementById('searchPanchayat').value;
+  var searchInput = document.getElementById('searchWork');
+  var wf = searchInput ? searchInput.value.trim().toLowerCase() : '';
+  var sf = currentSavedWorkStatus;
+  var f = getRoleFilteredWorks(allSavedWorks);
+  
+  // ✅ अब 'Estimated' मेन्यू में सिर्फ वही वर्क्स दिखेंगे जिनकी 'Estimate Data' सेव हुई है
+  if (sf === 'Valuation') {
+    f = f.filter(function(w) { return w.Status === 'Inbox' || w.Status === 'Estimated' || w.Status === 'Valuation'; });
+  } 
+  else if (sf === 'Estimated') {
+    f = f.filter(function(w) { 
+      return (w.Status === 'Estimated' || w.Status === 'Valuation') && w['Estimate Data'] && String(w['Estimate Data']).trim() !== ''; 
+    });
+  }
+  else if (sf) {
+    f = f.filter(function(w) { return w.Status === sf; });
+  }
+  
+  if (pf) f = f.filter(function(w) { return w.Panchayat === pf; });
+  if (wf) f = f.filter(function(w) { return (w.Work || '').toLowerCase().indexOf(wf) !== -1; });
+  
+  swFilteredWorks = f; 
+  swCurrentPage = 1; 
+  displaySavedWorks();
+}
+function displaySavedWorks() {
+  var sw = swFilteredWorks;
+  var totalRows = sw.length;
+  var totalPages = Math.ceil(totalRows / swRowsPerPage); if (totalPages === 0) totalPages = 1;
+  if (swCurrentPage > totalPages) swCurrentPage = totalPages; if (swCurrentPage < 1) swCurrentPage = 1;
+  var startIdx = (swCurrentPage - 1) * swRowsPerPage, endIdx = Math.min(startIdx + swRowsPerPage, totalRows);
+  var pageData = sw.slice(startIdx, endIdx);
+  var tb = document.getElementById("savedWorkTableBody");
+  var isPanch = currentUser && currentUser.type === 'Panchayat';
+  if (pageData.length === 0) tb.innerHTML = '<tr><td colspan="6" class="empty-row">No works found</td></tr>';
+  else {
+    tb.innerHTML = pageData.map(function(w) {
+      var oi = allSavedWorks.indexOf(w);
+      
+      // ✅ दोनों अमाउंट्स अलग-अलग निकालें
+      var estAmt = getAmountFromData(w, 'Estimate Data');
+      var valAmt = getAmountFromData(w, 'Valuation Data');
+      
+      var sc = w.Status === 'Estimated' ? 'estimated' : w.Status === 'Measured' ? 'measured' : w.Status === 'Inbox' ? 'inbox' : w.Status === 'Valuation' ? 'valuation' : 'draft';
+      var hasEstimate = w['Estimate Data'] && w['Estimate Data'].trim() !== '';
+      
+      var estDisplay = estAmt > 0 ? '\u20B9' + formatIndianCurrency(estAmt) : '—';
+      var valDisplay = valAmt > 0 ? '\u20B9' + formatIndianCurrency(valAmt) : '—';
+      
+      // ✅ पंचायत के लिए सिर्फ View बटन दिखाएँ, बाकी के लिए View और Delete दोनों
+      var actionCell = isPanch 
+        ? '<div class="action-btns"><button class="btn-icon" onclick="viewWorkDetail(' + oi + ')" title="View"><i class="ri-eye-line"></i></button></div>'
+        : '<div class="action-btns"><button class="btn-icon" onclick="viewWorkDetail(' + oi + ')" title="View"><i class="ri-eye-line"></i></button><button class="btn-icon" onclick="deleteWorkAction(' + oi + ')" title="Delete" style="color:var(--danger)"><i class="ri-delete-bin-line"></i></button></div>';
+        
+      // ✅ टेबल रो में नया कॉलम जोड़ें
+      return '<tr><td>' + (w['Sr no'] || '') + '</td><td>' + w.Panchayat + '</td><td><span class="status-dot ' + sc + '" title="' + (w.Status || 'Draft') + '"></span> ' + w.Work + (hasEstimate ? ' <i class="ri-draft-line" style="font-size:11px;color:var(--primary);" title="Estimate Saved"></i>' : '') + '</td><td class="text-right">' + estDisplay + '</td><td class="text-right">' + valDisplay + '</td><td>' + actionCell + '</td></tr>';
+    }).join('');
+  }
+  renderSavedWorksPagination(totalRows, totalPages, startIdx, endIdx);
+}
+function viewWorkDetail(i) {
+  var w = allSavedWorks[i];
+  if (!w) { showToast("Work not found!", "error"); return; }
+  document.getElementById("modalSrNo").textContent = w['Sr no'] || i + 1;
+  document.getElementById("modalSor").textContent = w.SOR;
+  document.getElementById("modalJanpad").textContent = w.Janpad;
+  document.getElementById("modalEngineer").textContent = w.Engineer;
+  document.getElementById("modalPanchayat").textContent = w.Panchayat;
+  document.getElementById("modalWork").textContent = w.Work;
+  document.getElementById("modalTs").textContent = w['TS Authority'];
+  document.getElementById("modalAs").textContent = w['AS Authority'];
+  document.getElementById("modalHead").textContent = w.Head;
+  document.getElementById("modalStatus").textContent = w.Status || 'Draft';
+  document.getElementById("modalRemark").textContent = w.Remark || 'No remark';
+  document.getElementById("workDetailModal").dataset.currentIndex = i;
+  
+  var editBtn = document.getElementById("modalEditBtn");
+  // ✅ अब 'Valuation' स्टेटस पर भी एडिट बटन डिसेबल होगा
+  if (w.Status === 'Estimated' || w.Status === 'Measured' || w.Status === 'Valuation') { 
+    editBtn.disabled = true; 
+    editBtn.title = "Cannot edit. Work is already " + w.Status; 
+  } else { 
+    editBtn.disabled = false; 
+    editBtn.title = "Edit Work"; 
+  }
+  
+  var estimateBtn = document.getElementById("modalEstimateBtn");
+  var valuationBtn = document.getElementById("modalValuationBtn");
+  var hasValuation = w['Valuation Data'] && w['Valuation Data'].trim() !== '';
+  
+  // ✅ Estimate बटन हमेशा दिखेगा ताकि यूज़र एस्टिमेट डेटा देख सके
+  if(estimateBtn) {
+    estimateBtn.innerHTML = '<i class="ri-file-chart-line"></i> Estimate'; 
+    estimateBtn.onclick = createEstimateFromModal;
+    estimateBtn.style.display = 'inline-flex';
+  }
+  
+  // ✅ Valuation बटन का लॉजिक
+  if (valuationBtn) {
+    // अगर यूज़र पंचायत है, तो वैल्यूएशन बटन कभी न दिखे
+    if (currentUser && currentUser.type === 'Panchayat') {
+      valuationBtn.style.display = 'none';
+    } 
+    // बाकी यूज़र्स के लिए: सिर्फ तब दिखेगा जब वर्क 'Estimated' हो या पहले से वैल्यूएशन हो
+    else {
+      if (w.Status === 'Estimated' || w.Status === 'Valuation' || hasValuation) {
+        valuationBtn.style.display = 'inline-flex';
+      } else {
+        valuationBtn.style.display = 'none';
+      }
+    }
+  }
+  
+  var submitBtn = document.getElementById("modalSubmitBtn");
+  if (submitBtn) { submitBtn.style.display = (w.Status === 'Draft' && currentUser.type !== 'Panchayat') ? 'inline-flex' : 'none'; }
+  
+  openModal('workDetailModal');
+}
+function editWorkFromModal() { var i = document.getElementById("workDetailModal").dataset.currentIndex; closeModal('workDetailModal'); editWork(parseInt(i)); }
+function createEstimateFromModal() { var i = document.getElementById("workDetailModal").dataset.currentIndex; closeModal('workDetailModal'); createEstimate(parseInt(i)); setupWorkDetailTabs(); }
+// ✅ यह फंक्शन मॉडल से वैल्यूएशन पेज खोलेगा
+function openValuationFromModal() {
+  var i = parseInt(document.getElementById("workDetailModal").dataset.currentIndex);
+  closeModal('workDetailModal'); 
+  openValuationPage(i); 
+}
+function editWork(index) {
+  var w = allSavedWorks[index];
+  if (!w) { showToast("Work not found!", "error"); return; }
+  if (w.Status === 'Estimated' || w.Status === 'Measured') { showToast("Cannot edit", "warning"); return; }
+  editingWorkIndex = index;
+  navigateTo('newWork');
+  document.getElementById("sorSelect").value = w.SOR;
+  document.getElementById("janpadSelect").value = w.Janpad;
+  setTimeout(function() {
+    loadEngineersForEdit(w.Engineer, w.Panchayat);
+    document.getElementById("workName").value = w.Work;
+    document.getElementById("ts").value = w['TS Authority'];
+    document.getElementById("as").value = w['AS Authority'];
+    var heads = w.Head ? w.Head.split(' + ') : [];
+    document.getElementById("head1").value = heads[0] || '';
+    document.getElementById("head2").value = heads[1] || '';
+    document.getElementById("msg").value = w.Remark || '';
+    var btn = document.getElementById('saveWorkBtn');
+    btn.innerHTML = '<i class="ri-save-line"></i> Update Work'; btn.onclick = updateWorkDetail;
+    updateWorkInfoDirectly(w);
+  }, 300);
+}
+function deleteWorkAction(index) {
+  showConfirm("Are you sure you want to delete this work?", function() {
+    google.script.run.withSuccessHandler(function() { showToast("Work deleted!", "success"); loadAllSavedWorks(); }).deleteWork(index);
+  });
+}
+function createEstimate(index) {
+  isValuationMode = false;
+  currentEstimateWorkIndex = index;
+  var w = allSavedWorks[index];
+  if (!w) { showToast("Work not found!", "error"); return; }
+  showAppLoading('Opening Estimate... Please wait.');
+  currentEstimateProvisions = []; clearDrawing(); loadDriveDrawings();
+  var isEstimated = (w.Status === 'Estimated' || w.Status === 'Measured' || w.Status === 'Valuation');
+  var container = document.getElementById("headingSectionsContainer");
+  container.innerHTML = ''; container.classList.remove('read-only-estimate');
+  sectionCounter = 0; tableCount = 0;
+  document.getElementById("cibAmt").textContent = '0.00';
+  document.getElementById("extraWorkAmt").textContent = '0.00';
+  document.getElementById("sorSelect").value = w.SOR;
+  document.getElementById("janpadSelect").value = w.Janpad;
+  var estimateDataStr = w['Estimate Data'];
+  var hasEstimateData = !!(estimateDataStr && estimateDataStr.trim() !== '');
+  updateEngineerOptions(w.Engineer, function() {
+    updatePanchayatOptions(w.Panchayat, function() {
+      document.getElementById("workName").value = w.Work;
+      document.getElementById("ts").value = w['TS Authority'];
+      document.getElementById("as").value = w['AS Authority'];
+      var heads = w.Head ? w.Head.split(' + ') : [];
+      document.getElementById("head1").value = heads[0] || '';
+      document.getElementById("head2").value = heads[1] || '';
+      document.getElementById("msg").value = w.Remark || '';
+      updateWorkInfoDirectly(w); updateSpecOptions(); updateSummaryBoxBasedOnSOR();
+      var addSectionBtn = document.querySelector('#page-workDetail .btn-primary[onclick="addHeadingSection()"]');
+      var loadTplBtn = document.querySelector('#page-workDetail .btn-outline[onclick="openLoadTemplateModal()"]');
+      if (isEstimated) { if (addSectionBtn) addSectionBtn.style.display = 'none'; if (loadTplBtn) loadTplBtn.style.display = 'none'; }
+      else { if (addSectionBtn) addSectionBtn.style.display = ''; if (loadTplBtn) loadTplBtn.style.display = ''; }
+      if (hasEstimateData) {
+        try { 
+          var estData = JSON.parse(estimateDataStr); loadSavedEstimateData(estData, w.SOR); 
+          if (isEstimated) showToast("Viewing estimate (Read-Only)", "info"); else showToast("Previous estimate loaded!", "info"); 
+        } catch (e) { showToast("Could not load previous estimate data.", "warning"); }
+      }
+      var wdPage = document.getElementById('page-workDetail');
+      if (wdPage) {
+        if (isEstimated) {
+          // ✅ पूरे पेज पर रीड-ओनली क्लास लगाएँ
+          wdPage.classList.add('read-only-estimate');
+          // सभी एडिटेबल फील्ड्स बंद करें
+          wdPage.querySelectorAll('[contenteditable="true"]').forEach(function(el) { 
+            el.setAttribute('contenteditable', 'false'); 
+          });
+        } else {
+          // अगर Inbox/Draft में है, तो लॉक हटा दें
+          wdPage.classList.remove('read-only-estimate');
+        }
+      }
+      
+      // ✅ पंचायत यूज़र के लिए Abstract और BOQ टैब छिपाएँ
+      var isPanchayatUser = currentUser && currentUser.type === 'Panchayat';
+      var abstractTabBtn = document.querySelector('#page-workDetail .wd-tab-btn[data-tab="abstract"]');
+      var boqTabBtn = document.querySelector('#page-workDetail .wd-tab-btn[data-tab="boq"]');
+      var drawingTabBtn = document.querySelector('#page-workDetail .wd-tab-btn[data-tab="drawing"]');
+      
+      if (isPanchayatUser) {
+        if (abstractTabBtn) abstractTabBtn.style.display = 'none';
+        if (boqTabBtn) boqTabBtn.style.display = 'none';
+        if (drawingTabBtn) drawingTabBtn.style.display = 'none';
+      } else {
+        // बाकी यूज़र्स के लिए टैब्स वापस दिखाएँ
+        if (abstractTabBtn) abstractTabBtn.style.display = '';
+        if (boqTabBtn) boqTabBtn.style.display = '';
+        if (drawingTabBtn) drawingTabBtn.style.display = '';
+      }
+      
+      switchWorkDetailTab('estimate');
+      hideAppLoading(); navigateTo('workDetail');
+    });
+  });
+}
+function loadSavedEstimateData(estData, sorType) {
+  var container = document.getElementById("headingSectionsContainer");
+  
+  var provElClear = document.getElementById("provisions");
+  if (provElClear) provElClear.innerHTML = '';
+
+  if (estData.summary) {
+    if (estData.summary.cib && parseFloat(estData.summary.cib) > 0) document.getElementById("cibAmt").textContent = estData.summary.cib;
+    if (estData.summary.extraWork && parseFloat(estData.summary.extraWork) > 0) document.getElementById("extraWorkAmt").textContent = estData.summary.extraWork;
+    if (estData.summary.elecLabel) document.getElementById("elecLabel").textContent = estData.summary.elecLabel;
+    if (estData.summary.saniLabel) document.getElementById("saniLabel").textContent = estData.summary.saniLabel;
+    if (estData.summary.deductLabel) document.getElementById("deductLabel").textContent = estData.summary.deductLabel;
+    if (estData.summary.gstLabel) document.getElementById("gstLabel").textContent = estData.summary.gstLabel;
+    if (estData.summary.contLabel) document.getElementById("contLabel").textContent = estData.summary.contLabel;
+  }
+  if (estData.provisions && estData.provisions.length > 0) currentEstimateProvisions = estData.provisions;
+  else currentEstimateProvisions = [];
+  if (estData.drawing && estData.drawing !== '') {
+    loadDriveDrawings(estData.drawing);
+    var mimeType = 'image';
+    var sel = document.getElementById('drawingSelect');
+    if(sel && sel.value.indexOf('application/pdf') !== -1) mimeType = 'application/pdf';
+    previewDriveDrawing({ value: estData.drawing + '|' + mimeType });
+  } else clearDrawing();
+  if (estData.sections && estData.sections.length > 0) {
+    estData.sections.forEach(function(sec) {
+      sectionCounter++;
+      var section = document.createElement("div"); section.className = "heading-section";
+      section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">' + sec.name + '</span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+      container.appendChild(section);
+      var tc = section.querySelector(".tables-container");
+      if (sec.specs && sec.specs.length > 0) { sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, sorType); }); }
+    });
+    updateAllTableNumbers(); calc();
+  }
+}
+function collectEstimateData() {
+  var sections = [];
+  document.querySelectorAll("#headingSectionsContainer .heading-section").forEach(function(section) {
+    var secName = section.querySelector(".heading-title").textContent.trim();
+    var specs = [];
+    section.querySelectorAll(".measurement-table").forEach(function(table) { specs.push(collectTableData(table)); });
+    sections.push({ name: secName, specs: specs });
+  });
+  var summary = {
+    cib: (document.getElementById("cibAmt") ? document.getElementById("cibAmt").textContent.trim() : '0.00'),
+    extraWork: (document.getElementById("extraWorkAmt") ? document.getElementById("extraWorkAmt").textContent.trim() : '0.00'),
+    elecLabel: (document.getElementById("elecLabel") ? document.getElementById("elecLabel").textContent.trim() : ''),
+    saniLabel: (document.getElementById("saniLabel") ? document.getElementById("saniLabel").textContent.trim() : ''),
+    deductLabel: (document.getElementById("deductLabel") ? document.getElementById("deductLabel").textContent.trim() : ''),
+    gstLabel: (document.getElementById("gstLabel") ? document.getElementById("gstLabel").textContent.trim() : ''),
+    contLabel: (document.getElementById("contLabel") ? document.getElementById("contLabel").textContent.trim() : '')
+  };
+  var provisions = [];
+  var provEl = document.getElementById("provisions");
+  if (provEl) { provEl.querySelectorAll('li').forEach(function(li) { var text = li.textContent.trim(); if (text) provisions.push(text); }); }
+  var drawing = getDrawingData();
+  return { sections: sections, summary: summary, provisions: provisions, drawing: drawing };
+}
+function saveEstimate() {
+  calc();
+  var grossEl = document.getElementById("grossTotalAmt");
+  var gross = parseFloat(grossEl ? grossEl.textContent : 0) || 0;
+  if (currentEstimateWorkIndex === null || currentEstimateWorkIndex === undefined) { showToast("No work selected!", "warning"); return; }
+  if (gross <= 0) { showToast("Amount is zero. Add specifications first!", "warning"); return; }
+  var estData = collectEstimateData();
+  var estDataJson = JSON.stringify(estData);
+  showConfirm("Save estimate as 'Draft' with amount \u20B9" + gross.toFixed(2) + "?", function() {
+      google.script.run.withSuccessHandler(function() { 
+      showToast("Estimate saved as Draft!", "success"); 
+      addNotification('success', 'Estimate saved as Draft for work ID: ' + currentEstimateWorkIndex); 
+      loadAllSavedWorks(); 
+      var submitBtn = document.getElementById('submitEstimateBtn');
+      if (submitBtn) submitBtn.style.display = '';
+    }).withFailureHandler(function(e) { showToast(e.message, "error"); }).saveEstimateData(currentEstimateWorkIndex, estDataJson, "Draft", gross);
+  });
+}
+function goBackSavedWorkSection() { navigateTo('savedWorks'); }
+function updateWorkInfoDirectly(w) { function sv(id,v){var el=document.getElementById(id);if(el)el.textContent=v||'--';} sv("displaySor",w.SOR); sv("displayEngineer",w.Engineer); sv("displayWorkName",w.Work); sv("displayPanchayat",w.Panchayat); sv("displayJanpad",w.Janpad); ['signatureJanpad1','signatureJanpad2','signatureJanpad3','signatureJanpad4','signatureJanpad5'].forEach(function(id){sv(id,w.Janpad);}); }
+function loadEngineersForEdit(selEng, selPan) { var j=document.getElementById('janpadSelect').value; var es=document.getElementById('engineerSelect'); es.innerHTML='<option value="">-- Select Engineer --</option>'; if(j){ google.script.run.withSuccessHandler(function(engs){ engs.forEach(function(e){var o=document.createElement('option');o.value=e;o.textContent=e;es.appendChild(o);}); if(selEng&&engs.indexOf(selEng)!==-1){es.value=selEng; loadPanchayatsForEdit(selPan);} }).getEngineersForJanpad(j); } }
+function loadPanchayatsForEdit(selPan) { var j=document.getElementById('janpadSelect').value,e=document.getElementById('engineerSelect').value,ps=document.getElementById('panchayatSelect'); ps.innerHTML='<option value="">-- Select Panchayat --</option>'; if(j&&e){ google.script.run.withSuccessHandler(function(pcs){ if(pcs&&pcs.length>0){ pcs.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;ps.appendChild(o);}); if(selPan&&pcs.indexOf(selPan)!==-1)ps.value=selPan; } updateWorkInfoSection(); }).getPanchayatsForEngineer(j,e); } }
+
+// ====================== HEADING SECTIONS ======================
+function addHeadingSection() { isTemplateBuilderMode=false; openHeadingNameModal(); }
+function addTemplateSection() { isTemplateBuilderMode=true; openHeadingNameModal(); }
+function openHeadingNameModal() {
+  document.getElementById("headingNameInput").value = "";
+  openModal('headingNameModal');
+  setTimeout(function() { var inp=document.getElementById("headingNameInput"); inp.focus(); inp.setSelectionRange(inp.value.length,inp.value.length); }, 100);
+}
+function saveHeadingName() {
+  var name = document.getElementById("headingNameInput").value.trim();
+  if(!name){
+    showToast("Enter a section name!","warning");
+    return;
+  }
+  
+  var containerId = isTemplateBuilderMode ? "templateSectionsContainer" : (isValuationMode ? "valuationSectionsContainer" : "headingSectionsContainer");
+  var container = document.getElementById(containerId);
+  
+  // ✅ चेक करें कि यह नाम पहले से मौजूद तो नहीं है
+  var existingSections = container.querySelectorAll(".heading-section");
+  for (var i = 0; i < existingSections.length; i++) {
+    var titleEl = existingSections[i].querySelector(".heading-title");
+    if (titleEl) {
+      var existingName = titleEl.textContent.trim();
+      // नाम और नंबर को अलग करें (जैसे: "Heading / Description : 1- Road" से "Road" निकालना)
+      var match = existingName.match(/^Heading\s*\/\s*Description\s*:\s*\d+\s*-\s*(.*)$/);
+      if (match && match[1]) {
+        existingName = match[1].trim();
+      }
+      
+      // अगर नाम मिल जाए (छोटे-बड़े अक्षरों की परवाह नहीं)
+      if (existingName.toLowerCase() === name.toLowerCase()) {
+        showToast("A section with this name already exists!", "error");
+        return; // सेक्शन ऐड न हो
+      }
+    }
+  }
+  
+  // अगर नाम यूनिक है, तभी सेक्शन बनेगा
+  closeModal('headingNameModal');
+  var count = container.querySelectorAll(".heading-section").length;
+  var displayNum = count + 1;
+  var section = document.createElement("div"); 
+  section.className = "heading-section";
+  section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">Heading / Description : ' + displayNum + '- ' + name + '</span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+  container.appendChild(section);
+  section.scrollIntoView({behavior:'smooth'});
+}
+function deleteHeadingSection(button) {
+  button.closest(".heading-section").remove();
+  var containerId = isTemplateBuilderMode ? "templateSectionsContainer" : (isValuationMode ? "valuationSectionsContainer" : "headingSectionsContainer");
+  var container = document.getElementById(containerId);
+  container.querySelectorAll(".heading-section").forEach(function(sec, idx) {
+    var t = sec.querySelector(".heading-title");
+    if (t) {
+      var m = t.textContent.match(/^Heading\s*\/\s*Description\s*:\s*\d+\s*-\s*(.+)/);
+      t.textContent = "Heading / Description : " + (idx + 1) + "- " + (m ? m[1] : t.textContent);
+    }
+  });
+  updateAllTableNumbers();
+}
+
+// ====================== MEASUREMENT TABLE ======================
+function addTable(code, spec, rate1, rate2, unit, container) {
+  tableCount++;
+  var sorType = isTemplateBuilderMode ? document.getElementById("templateSorType").value : document.getElementById("sorSelect").value;
+  var showUnskilled = sorType !== "R.E.S. 11-04-2022"; // Always true if not RES, but since we only have RES, it will be false
+  var nt = document.createElement("table"); nt.className = "measurement-table";
+  var colGroup = '<colgroup>' +
+    '<col style="width:3%;"><col style="width:22%;"><col style="width:5%;"><col style="width:10%;"><col style="width:10%;"><col style="width:10%;"><col style="width:5%;"><col style="width:8%;"><col style="width:15%;"><col class="print-hide" style="width:12%;"></colgroup>';
+  nt.innerHTML = colGroup + '<tbody><tr class="spec-row"><td class="item-sr">' + tableCount + '</td><td colspan="8" class="toggle-collapse" style="white-space:pre-wrap; cursor: pointer;"><b>(' + code + ')</b> \u2014 ' + spec.replace(/\n/g, "<br>") + '</td><td class="print-hide"><div class="table-action-btns"><button class="change-spec-btn" title="Change Spec"><i class="ri-exchange-line"></i></button><button class="duplicate-table-btn" title="Duplicate"><i class="ri-file-list-3-line"></i></button><button class="move-up-btn" title="Move Up"><i class="ri-arrow-up-line"></i></button><button class="move-down-btn" title="Move Down"><i class="ri-arrow-down-line"></i></button><button class="delete-table-btn danger-btn" title="Delete"><i class="ri-delete-bin-line"></i></button></div></td></tr><tr><th>S.N.</th><th>Description</th><th>No</th><th>L</th><th>B</th><th>H</th><th>C.F.</th><th>Qty</th><th>Remark</th><th class="print-hide">Action</th></tr><tr><td class="sno">1</td><td contenteditable="true"></td><td contenteditable="true" class="no">1</td><td contenteditable="true" class="length"></td><td contenteditable="true" class="breadth"></td><td contenteditable="true" class="height"></td><td contenteditable="true" class="cf">1.000</td><td class="quantity">0.00</td><td contenteditable="true"></td><td class="print-hide"><div class="table-action-btns"><button class="duplicate-row-btn" title="Duplicate"><i class="ri-file-copy-line"></i></button><button class="add-row-btn" title="Add Row"><i class="ri-add-line"></i></button><button class="add-deduction-btn" title="Deduction"><i class="ri-subtract-line"></i></button><button class="delete-row-btn danger-btn" title="Delete"><i class="ri-delete-bin-line"></i></button></div></td></tr><tr><td colspan="7" style="text-align:right;font-weight:600;">Net Total Quantity</td><td colspan="2" class="netQty" style="text-align:left;">0.00</td><td class="print-hide"></td></tr><tr><td colspan="7" class="rate1" style="text-align:right;">@ Rs ' + parseFloat(rate1).toFixed(2) + ' / ' + unit + '</td><td colspan="2" class="amt1">0.00</td><td class="print-hide"></td></tr><tr class="unskilled-row" style="' + (showUnskilled ? '' : 'display:none;') + '"><td colspan="7" class="rate2" style="text-align:right;">Unskilled @ Rs ' + parseFloat(rate2).toFixed(2) + ' / ' + unit + '</td><td colspan="2" class="amt2">0.00</td><td class="print-hide"></td></tr></tbody>';
+  var wrapper = document.createElement("div"); wrapper.className = "table-scroll-wrapper"; wrapper.appendChild(nt);
+  if (isChangingSpec && window._tableToChangeSpec) { var oldWrapper = window._tableToChangeSpec.closest(".table-scroll-wrapper"); if (oldWrapper) oldWrapper.replaceWith(wrapper); }
+  else if (currentTable) { var cw = currentTable.closest(".table-scroll-wrapper"); if (cw) cw.insertAdjacentElement("afterend", wrapper); var section = currentTable.closest(".heading-section"); var tc = section ? section.querySelector(".tables-container") : null; if (tc && !tc.contains(wrapper)) tc.appendChild(wrapper); }
+  else if (container) { container.appendChild(wrapper); }
+  updateAllTableNumbers(); updateSummaryBoxBasedOnSOR(); return nt;
+}
+function createMeasurementTableWithRows(sp, tc, sorType) {
+  tableCount++; 
+  var showUnskilled = sorType !== "R.E.S. 11-04-2022";
+  var nt = document.createElement("table"); 
+  nt.className = "measurement-table";
+  
+  var specText = sp.spec || '', rate1 = parseFloat(sp.rate1) || 0, rate2 = parseFloat(sp.rate2) || 0, unit = sp.unit || '', measurements = sp.measurements || [];
+  
+  // ✅ FIX: उस सेक्शन के अंदर अभी तक कितने टेबल्स हैं, वह गिन लेंगे ताकि सही Sr No आ जाए
+  var currentSectionTableCount = tc.querySelectorAll('.measurement-table').length + 1;
+  
+  var colGroup = '<colgroup><col style="width:3%;"><col style="width:22%;"><col style="width:5%;"><col style="width:10%;"><col style="width:10%;"><col style="width:10%;"><col style="width:5%;"><col style="width:8%;"><col style="width:15%;"><col class="print-hide" style="width:12%;"></colgroup>';
+
+  var html = colGroup + '<tbody>';
+  
+  // ✅ यहाँ tableCount की जगह currentSectionTableCount लगाया गया है
+  html += '<tr class="spec-row"><td class="item-sr">' + currentSectionTableCount + '</td><td colspan="8" class="toggle-collapse" style="white-space:pre-wrap; cursor: pointer;"><b>(' + (sp.code || '') + ')</b> \u2014 ' + specText.replace(/\n/g, "<br>") + '</td><td class="print-hide"><div class="table-action-btns"><button class="change-spec-btn" title="Change Spec"><i class="ri-exchange-line"></i></button><button class="duplicate-table-btn" title="Duplicate"><i class="ri-file-list-3-line"></i></button><button class="move-up-btn" title="Move Up"><i class="ri-arrow-up-line"></i></button><button class="move-down-btn" title="Move Down"><i class="ri-arrow-down-line"></i></button><button class="delete-table-btn danger-btn" title="Delete"><i class="ri-delete-bin-line"></i></button></div></td></tr>';
+  
+  html += '<tr><th>S.N.</th><th>Description</th><th>No</th><th>L</th><th>B</th><th>H</th><th>C.F.</th><th>Qty</th><th>Remark</th><th class="print-hide">Action</th></tr>';
+  
+  var needDedTitle = false;
+  if (measurements.length > 0) {
+    measurements.forEach(function(m) {
+      if (m.isDeduction && !needDedTitle) { 
+        html += '<tr class="deduction-title"><td colspan="9" style="text-align:center;">DEDUCTION</td><td class="print-hide"><div class="table-action-btns"><button class="delete-deduction-btn danger-btn" title="Delete Deductions"><i class="ri-delete-bin-line"></i></button></div></td></tr>'; 
+        needDedTitle = true; 
+      }
+      var rc = m.isDeduction ? ' class="deduction-row"' : '';
+      var actionBtns = '<div class="table-action-btns"><button class="duplicate-row-btn" title="Duplicate"><i class="ri-file-copy-line"></i></button><button class="add-row-btn" title="Add Row"><i class="ri-add-line"></i></button>';
+      if (!m.isDeduction) actionBtns += '<button class="add-deduction-btn" title="Deduction"><i class="ri-subtract-line"></i></button>';
+      actionBtns += '<button class="delete-row-btn danger-btn" title="Delete"><i class="ri-delete-bin-line"></i></button></div>';
+      
+      html += '<tr' + rc + '><td class="sno"></td><td contenteditable="true">' + (m.desc || '') + '</td><td contenteditable="true" class="no">' + formatLoadNo(m.no) + '</td><td contenteditable="true" class="length">' + formatLoadDecimal(m.l, '') + '</td><td contenteditable="true" class="breadth">' + formatLoadDecimal(m.b, '') + '</td><td contenteditable="true" class="height">' + formatLoadDecimal(m.h, '') + '</td><td contenteditable="true" class="cf">' + formatLoadDecimal(m.cf, '1.000') + '</td><td class="quantity">0.00</td><td contenteditable="true">' + (m.remark || '') + '</td><td class="print-hide">' + actionBtns + '</td></tr>';
+    });
+  } else {
+    html += '<tr><td class="sno">1</td><td contenteditable="true"></td><td contenteditable="true" class="no">1</td><td contenteditable="true" class="length"></td><td contenteditable="true" class="breadth"></td><td contenteditable="true" class="height"></td><td contenteditable="true" class="cf">1.000</td><td class="quantity">0.00</td><td contenteditable="true"></td><td class="print-hide"><div class="table-action-btns"><button class="duplicate-row-btn"><i class="ri-file-copy-line"></i></button><button class="add-row-btn"><i class="ri-add-line"></i></button><button class="add-deduction-btn"><i class="ri-subtract-line"></i></button><button class="delete-row-btn danger-btn"><i class="ri-delete-bin-line"></i></button></div></td></tr>';
+  }
+  
+  html += '<tr><td colspan="7" style="text-align:right;font-weight:600;">Net Total Quantity</td><td colspan="2" class="netQty" style="text-align:left;">0.00</td><td class="print-hide"></td></tr>';
+  html += '<tr><td colspan="7" class="rate1" style="text-align:right;">@ Rs ' + rate1.toFixed(2) + ' / ' + unit + '</td><td colspan="2" class="amt1">0.00</td><td class="print-hide"></td></tr>';
+  html += '<tr class="unskilled-row" style="' + (showUnskilled ? '' : 'display:none;') + '"><td colspan="7" class="rate2" style="text-align:right;">Unskilled @ Rs ' + rate2.toFixed(2) + ' / ' + unit + '</td><td colspan="2" class="amt2">0.00</td><td class="print-hide"></td></tr>';
+  html += '</tbody>'; 
+  nt.innerHTML = html;
+  
+  var wrapper = document.createElement("div"); 
+  wrapper.className = "table-scroll-wrapper"; 
+  wrapper.appendChild(nt); 
+  tc.appendChild(wrapper); 
+  return wrapper;
+}
+function addRow(btn) { var tr=btn.closest("tr"),tbody=tr.closest("tbody"),nr=tr.cloneNode(true); nr.querySelectorAll("td").forEach(function(td){ if(td.querySelector("button"))return; if(td.classList.contains("sno"))td.textContent=""; else if(td.classList.contains("quantity"))td.textContent="0.00"; else if(td.classList.contains("no"))td.textContent="1"; else if(td.classList.contains("cf"))td.textContent="1.000"; else td.textContent=""; }); tbody.insertBefore(nr,tr.nextSibling); updateSno(tbody); calc(); }
+function deleteRow(btn) { var row=btn.closest("tr"),tbody=row.closest("tbody"),rows=Array.from(tbody.querySelectorAll("tr")).filter(function(tr){return tr.querySelector(".no");}); if(rows.length>1)row.remove(); updateSno(tbody); calc(); }
+function updateSno(tbody) { var i=1; tbody.querySelectorAll("tr").forEach(function(row){ var s=row.querySelector(".sno"); if(s&&!row.classList.contains("deduction-title")&&!row.classList.contains("deduction-row"))s.textContent=i++; }); }
+function addDeductionSection(button) {
+  var table=button.closest("table"),tbody=table.querySelector("tbody"),nqc=tbody.querySelector(".netQty"); if(!nqc)return; var netRow=nqc.closest("tr");
+  if(tbody.querySelector(".deduction-title")){showToast("Deduction already exists!","warning");return;}
+  var titleRow=document.createElement("tr"); titleRow.className="deduction-title"; titleRow.innerHTML='<td colspan="9" style="text-align:center;">DEDUCTION</td><td class="print-hide"><div class="table-action-btns"><button class="delete-deduction-btn danger-btn" title="Delete Deductions"><i class="ri-delete-bin-line"></i></button></div></td>';
+  var dRow=document.createElement("tr"); dRow.className="deduction-row"; dRow.innerHTML='<td class="sno"></td><td contenteditable="true">Description</td><td contenteditable="true" class="no">1</td><td contenteditable="true" class="length"></td><td contenteditable="true" class="breadth"></td><td contenteditable="true" class="height"></td><td contenteditable="true" class="cf">1.000</td><td class="quantity">0.00</td><td contenteditable="true"></td><td class="print-hide"><div class="table-action-btns"><button class="duplicate-row-btn"><i class="ri-file-copy-line"></i></button><button class="add-row-btn"><i class="ri-add-line"></i></button><button class="delete-row-btn danger-btn"><i class="ri-delete-bin-line"></i></button></div></td>';
+  tbody.insertBefore(titleRow,netRow); tbody.insertBefore(dRow,netRow); updateSno(tbody); calc();
+}
+function deleteDeductionSection(btn) { var tbody=btn.closest("table").querySelector("tbody"); var toRemove=[]; var tr=tbody.querySelector(".deduction-title"); if(tr)toRemove.push(tr); tbody.querySelectorAll(".deduction-row").forEach(function(r){toRemove.push(r);}); toRemove.forEach(function(el){el.remove();}); updateSno(tbody); calc(); showToast("Deduction removed!","success"); }
+function updateAllTableNumbers() {
+  var containerId = isTemplateBuilderMode ? "templateSectionsContainer" : (isValuationMode ? "valuationSectionsContainer" : "headingSectionsContainer");
+  var container = document.getElementById(containerId);
+  if (!container) return;
+  
+  var sections = container.querySelectorAll('.heading-section');
+  
+  sections.forEach(function(section, index) {
+    var titleEl = section.querySelector('.heading-title');
+    if (titleEl) {
+      var fullText = titleEl.textContent.trim();
+      var nameOnly = fullText;
+      var match = fullText.match(/^Heading\s*\/\s*Description\s*:\s*\d+\s*-\s*(.*)$/);
+      if (match && match[1]) nameOnly = match[1].trim();
+      titleEl.textContent = 'Heading / Description : ' + (index + 1) + '- ' + nameOnly;
+    }
+    
+    var tc = section.querySelector('.tables-container');
+    if (tc) {
+      var sectionTables = tc.querySelectorAll('.measurement-table');
+      var itemCounter = 0;
+      sectionTables.forEach(function(table) {
+        var specRow = table.querySelector('.spec-row');
+        if (specRow) {
+          var srCell = specRow.querySelector('.item-sr');
+          if (srCell) { 
+            itemCounter++; 
+            srCell.textContent = itemCounter; 
+          }
+        }
+      });
+    }
+  });
+}
+function duplicateRow(btn) { var tr=btn.closest("tr"),tbody=tr.closest("tbody"),nr=tr.cloneNode(true); var s=nr.querySelector(".sno"); if(s)s.textContent=""; tbody.insertBefore(nr,tr.nextSibling); updateSno(tbody); calc(); }
+function changeSpecTable(btn) {
+  currentTable=btn.closest("table"); window._activeTablesContainer=currentTable.closest(".tables-container"); window._tableToChangeSpec=currentTable;
+  var selSOR=isTemplateBuilderMode?document.getElementById("templateSorType").value:document.getElementById("sorSelect").value;
+  specModalSorType = selSOR;
+  var sorDropdown = document.getElementById('specModalSorSelect'); if (sorDropdown) sorDropdown.value = specModalSorType;
+  if(!specOptions[specModalSorType]||specOptions[specModalSorType].length===0) loadSpecificationsForSelectedSor(specModalSorType);
+  updateSpecSelect(specModalSorType); isChangingSpec=true; openModal('specModal');
+}
+function duplicateTable(btn) { var table=btn.closest("table"),wrapper=table.closest(".table-scroll-wrapper"),container=table.closest(".tables-container"); var nw=wrapper.cloneNode(true); container.insertBefore(nw,wrapper.nextSibling); updateAllTableNumbers(); calc(); }
+function moveTableUp(btn) { var wrapper=btn.closest("table").closest(".table-scroll-wrapper"),prev=wrapper.previousElementSibling; if(prev&&prev.classList.contains("table-scroll-wrapper")){wrapper.parentNode.insertBefore(wrapper,prev);updateAllTableNumbers();}else showToast("Already at top!","info"); }
+function moveTableDown(btn) { var wrapper=btn.closest("table").closest(".table-scroll-wrapper"),next=wrapper.nextElementSibling; if(next&&next.classList.contains("table-scroll-wrapper")){wrapper.parentNode.insertBefore(next,wrapper);updateAllTableNumbers();}else showToast("Already at bottom!","info"); }
+
+// ====================== CALCULATIONS ======================
+function calc() {
+  var containerId = "headingSectionsContainer";
+  var prefix = "";
+  
+  if (isTemplateBuilderMode) {
+    containerId = "templateSectionsContainer";
+  } else if (isValuationMode) {
+    containerId = "valuationSectionsContainer";
+    prefix = "val";
+  }
+  
+  var gt1 = 0, gt2 = 0;
+  document.querySelectorAll("#" + containerId + " .measurement-table").forEach(function(table) {
+    var tq = 0, sr = 1;
+    
+    table.querySelectorAll("tbody tr").forEach(function(row) {
+      var sc = row.querySelector(".sno");
+      var nc = row.querySelector(".no");
+      var qc = row.querySelector(".quantity");
+      
+      if (!nc || !qc) return;
+      if (row.classList.contains("spec-row") || row.classList.contains("deduction-title") || row.querySelector("th")) return;
+      
+      if (sc) sc.textContent = sr++;
+      
+      var hasValue = false;
+      
+      var noVal = nc.textContent.trim();
+      var no = 1;
+      if (noVal !== "") { 
+        no = safeMathEval(noVal); 
+        if (isNaN(no)) no = 0;
+        hasValue = true; 
+      }
+      
+      var lenEl = row.querySelector(".length");
+      var lenVal = lenEl ? lenEl.textContent.trim() : "";
+      var len = 1;
+      if (lenVal !== "") { 
+        len = safeMathEval(lenVal); 
+        if (isNaN(len)) len = 0;
+        hasValue = true; 
+      }
+
+      var brdEl = row.querySelector(".breadth");
+      var brdVal = brdEl ? brdEl.textContent.trim() : "";
+      var brd = 1;
+      if (brdVal !== "") { 
+        brd = safeMathEval(brdVal); 
+        if (isNaN(brd)) brd = 0;
+        hasValue = true; 
+      }
+
+      var hgtEl = row.querySelector(".height");
+      var hgtVal = hgtEl ? hgtEl.textContent.trim() : "";
+      var hgt = 1;
+      if (hgtVal !== "") { 
+        hgt = safeMathEval(hgtVal); 
+        if (isNaN(hgt)) hgt = 0;
+        hasValue = true; 
+      }
+      
+      var cfEl = row.querySelector(".cf");
+      var cfVal = cfEl ? cfEl.textContent.trim() : "";
+      var cf = 1;
+      if (cfVal !== "") { 
+        cf = safeMathEval(cfVal); 
+        if (isNaN(cf)) cf = 0;
+        hasValue = true; 
+      }
+      
+      if (hasValue) {
+        var q = no * len * brd * hgt * cf;
+        if (row.classList.contains("deduction-row")) q = -q;
+        qc.textContent = q.toFixed(2);
+        tq += q;
+      } else {
+        qc.textContent = "";
+      }
+    });
+    
+    var r1r = table.querySelector(".rate1");
+    var unit = "";
+    if (r1r) { var m = r1r.textContent.match(/\/\s*(\S+)$/); if (m) unit = m[1]; }
+    
+    var nq = table.querySelector(".netQty");
+    if (nq) nq.textContent = tq.toFixed(2) + (unit ? " " + unit : "");
+
+    var r1 = extractRate(r1r ? r1r.textContent : "");
+    var r2 = extractRate((table.querySelector(".rate2") || {}).textContent || "");
+    var a1 = tq * r1;
+    var a2 = tq * r2;
+    
+    var a1c = table.querySelector(".amt1");
+    var a2c = table.querySelector(".amt2");
+    if (a1c) a1c.textContent = a1.toFixed(2);
+    if (a2c) a2c.textContent = a2.toFixed(2);
+    
+    gt1 += a1;
+    gt2 += a2;
+  });
+  
+  // ✅ FIX: ID केस-सेंसिटिविटी को सुलझाने के लिए सही ID स्ट्रिंग्स का इस्तेमाल
+  function cleanNum(id) {
+    var el = document.getElementById(id);
+    if (!el) return 0;
+    var txt = el.textContent.replace(/[^0-9.]/g, "");
+    return parseFloat(txt) || 0;
+  }
+  
+  function setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
+  
+  // एस्टिमेट और वैल्यूएशन के लिए अलग-अलग ID नाम
+  var cibId = prefix ? prefix + "CibAmt" : "cibAmt";
+  var extraId = prefix ? prefix + "ExtraWorkAmt" : "extraWorkAmt";
+  var subTotalId = prefix ? prefix + "SubTotalAmt" : "subTotalAmt";
+  var elecLabelId = prefix ? prefix + "ElecLabel" : "elecLabel";
+  var elecAmtId = prefix ? prefix + "ElecAmt" : "elecAmt";
+  var saniLabelId = prefix ? prefix + "SaniLabel" : "saniLabel";
+  var saniAmtId = prefix ? prefix + "SaniAmt" : "saniAmt";
+  var totalAmtId = prefix ? prefix + "TotalAmt" : "totalAmt";
+  var deductLabelId = prefix ? prefix + "DeductLabel" : "deductLabel";
+  var deductionAmtId = prefix ? prefix + "DeductionAmt" : "deductionAmt";
+  var gstLabelId = prefix ? prefix + "GstLabel" : "gstLabel";
+  var gstAmtId = prefix ? prefix + "GstAmt" : "gstAmt";
+  var contLabelId = prefix ? prefix + "ContLabel" : "contLabel";
+  var contAmtId = prefix ? prefix + "ContAmt" : "contAmt";
+  var grossTotalId = prefix ? prefix + "GrossTotalAmt" : "grossTotalAmt";
+  var sayRsId = prefix ? prefix + "SayRs" : "sayRs";
+  var amountInEnglishId = prefix ? prefix + "AmountInEnglish" : "amountInEnglish";
+  var amountInHindiId = prefix ? prefix + "AmountInHindi" : "amountInHindi";
+  var unskilledAmtId = prefix ? prefix + "UnskilledAmt" : "unskilledAmt";
+  var materialAmtId = prefix ? prefix + "MaterialAmt" : "materialAmt";
+  var unskilledPercentId = prefix ? prefix + "UnskilledPercent" : "unskilledPercent";
+  var materialPercentId = prefix ? prefix + "MaterialPercent" : "materialPercent";
+  
+  var cib = cleanNum(cibId);
+  var extra = cleanNum(extraId);
+  var sub = gt1 + cib + extra;
+  setText(subTotalId, sub.toFixed(2));
+  
+  var sorType = isTemplateBuilderMode ? document.getElementById("templateSorType").value : document.getElementById("sorSelect").value;
+  var elecAmt = 0, saniAmt = 0, totalAmt = sub, dedAmt = 0, gstAmt = 0, contAmt = 0;
+  
+  if (sorType === "R.E.S. 11-04-2022") {
+    var ep = 0, elTxt = (document.getElementById(elecLabelId) || {}).textContent || "";
+    var em = elTxt.match(/(\d+(\.\d+)?)\s*%/); if (em) ep = parseFloat(em[1]);
+    elecAmt = (sub * ep) / 100;
+    setText(elecAmtId, elecAmt.toFixed(2));
+
+    var sp = 0, slTxt = (document.getElementById(saniLabelId) || {}).textContent || "";
+    var sm = slTxt.match(/(\d+(\.\d+)?)\s*%/); if (sm) sp = parseFloat(sm[1]);
+    saniAmt = (sub * sp) / 100;
+    setText(saniAmtId, saniAmt.toFixed(2));
+
+    totalAmt = sub + elecAmt + saniAmt;
+    setText(totalAmtId, totalAmt.toFixed(2));
+
+    var dp = 0, dlTxt = (document.getElementById(deductLabelId) || {}).textContent || "";
+    var dm = dlTxt.match(/(\d+(\.\d+)?)\s*%/); if (dm) dp = parseFloat(dm[1]);
+    dedAmt = (totalAmt * dp) / 100;
+    setText(deductionAmtId, dedAmt.toFixed(2));
+
+    var gp = 0, glTxt = (document.getElementById(gstLabelId) || {}).textContent || "";
+    var gm = glTxt.match(/(\d+(\.\d+)?)\s*%/); if (gm) gp = parseFloat(gm[1]);
+    gstAmt = ((totalAmt - dedAmt) * gp) / 100;
+    setText(gstAmtId, gstAmt.toFixed(2));
+
+    var cp = 0, clTxt = (document.getElementById(contLabelId) || {}).textContent || "";
+    var cm = clTxt.match(/(\d+(\.\d+)?)\s*%/); if (cm) cp = parseFloat(cm[1]);
+    contAmt = ((totalAmt - dedAmt) * cp) / 100;
+    setText(contAmtId, contAmt.toFixed(2));
+  }
+  
+  var gross = totalAmt - dedAmt + gstAmt + contAmt;
+  setText(grossTotalId, gross.toFixed(2));
+  setText(sayRsId, (gross / 100000).toFixed(2));
+  // ✅ Summary में 0 वैल्यू वाली रो (rows) छिपाने का लॉजिक
+  function hideZeroRow(id, val) {
+    var el = document.getElementById(id);
+    if (el) {
+      var row = el.closest('tr');
+      if (row) {
+        if (val === 0) row.classList.add('hidden-row');
+        else row.classList.remove('hidden-row');
+      }
+    }
+  }
+  
+  hideZeroRow(cibId, cib);
+  hideZeroRow(extraId, extra);
+  if (sorType === "R.E.S. 11-04-2022") {
+    hideZeroRow(elecAmtId, elecAmt);
+    hideZeroRow(saniAmtId, saniAmt);
+    hideZeroRow(deductionAmtId, dedAmt);
+    hideZeroRow(gstAmtId, gstAmt);
+    hideZeroRow(contAmtId, contAmt);
+  }  
+  setText(amountInEnglishId, "Amount in Words: " + convertNumberToWords(gross));
+  setText(amountInHindiId, "\u0930\u093E\u0936\u093F \u0936\u092C\u094D\u0926\u094B\u0902 \u092E\u0947\u0902: \u20B9- " + convertToHindiWords(gross) + "  \u0964");
+  
+  setText(unskilledAmtId, gt2.toFixed(2));
+  setText(materialAmtId, (gross - gt2).toFixed(2));
+  
+  var ups = document.getElementById(unskilledPercentId), mps = document.getElementById(materialPercentId);
+  if (gross > 0) {
+    if (ups) ups.textContent = ((gt2 / gross) * 100).toFixed(0) + "%";
+    if (mps) mps.textContent = (((gross - gt2) / gross) * 100).toFixed(0) + "%";
+  } else {
+    if (ups) ups.textContent = "0%";
+    if (mps) mps.textContent = "0%";
+  }
+}
+
+function safeMathEval(expr) { if (!expr || expr.trim() === "") return 1; expr = expr.replace(/\s/g, ""); var sanitized = expr.replace(/[^0-9+\-*/().]/g, ""); if (sanitized === "") return 1; try { var result = new Function("return " + sanitized)(); if (typeof result === 'number' && isFinite(result)) return result; return 0; } catch (e) { return 0; } }
+function extractRate(text) { 
+  if (!text) return 0;
+  var m = text.match(/Rs\s*([\d.,]+)/); 
+  if (m) {
+    return parseFloat(m[1].replace(/,/g, '')) || 0;
+  }
+  m = text.match(/([\d.,]+)/);
+  if (m) {
+    return parseFloat(m[1].replace(/,/g, '')) || 0;
+  }
+  return 0; 
+}
+function formatLoadDecimal(val, defaultVal) { if (val === undefined || val === null || val === '') return defaultVal || ''; if (typeof val === 'number') { if (val === 0) return defaultVal || ''; return val.toFixed(3); } var str = String(val).trim(); if (str === '' || str === '0') return defaultVal || ''; if (/[+\-*/()]/.test(str.replace(/^\s*-/, ''))) return str; var num = parseFloat(str); if (!isNaN(num) && isFinite(num)) return num.toFixed(3); return str; }
+function formatLoadNo(val) { if (val === undefined || val === null || val === '') return '1'; if (typeof val === 'number') { if (val === 0) return '1'; return String(val); } return String(val); }
+function updateSummaryBoxBasedOnSOR() { var sorType=isTemplateBuilderMode?document.getElementById("templateSorType").value:document.getElementById("sorSelect").value; var isRES=sorType==="R.E.S. 11-04-2022"; document.querySelectorAll('.res-only').forEach(function(el){el.style.display=isRES?'':'none';}); document.querySelectorAll('.mgnrega-only').forEach(function(el){el.style.display='none';}); updateMeasurementTablesBasedOnSOR(); calc(); }
+function updateMeasurementTablesBasedOnSOR() { var sorType=isTemplateBuilderMode?document.getElementById("templateSorType").value:document.getElementById("sorSelect").value; var show=sorType!=="R.E.S. 11-04-2022"; document.querySelectorAll('.unskilled-row').forEach(function(row){row.style.display=show?'':'none';}); }
+
+// ====================== SPECIFICATION MODAL ======================
+function isSpecAlreadyInHeading(specCode, headingSection) { if(!headingSection)return false; var tables=headingSection.querySelectorAll(".measurement-table"); for(var i=0;i<tables.length;i++){ var sc=tables[i].querySelector(".spec-row td.toggle-collapse"); if(sc){var m=sc.textContent.trim().match(/^\(([^)]+)\)/); if(m&&String(m[1])===String(specCode))return true;}} return false; }
+function openSpecModal(button) {
+  isChangingSpec = false;
+  var section = button.closest(".heading-section"), tc = section.querySelector(".tables-container"), tables = tc.querySelectorAll(".measurement-table");
+  window._activeTablesContainer = tc; currentTable = tables.length > 0 ? tables[tables.length - 1] : null;
+  var selSOR = isTemplateBuilderMode ? document.getElementById("templateSorType").value : document.getElementById("sorSelect").value;
+  if (!selSOR) { showToast("Select SOR type first!", "warning"); return; }
+  specModalSorType = selSOR;
+  var sorDropdown = document.getElementById('specModalSorSelect'); if (sorDropdown) sorDropdown.value = specModalSorType;
+  if (!specOptions[specModalSorType] || specOptions[specModalSorType].length === 0) loadSpecificationsForSelectedSor(specModalSorType);
+  updateSpecSelect(specModalSorType); openModal('specModal');
+}
+function openAddSorModalFromSpecModal() { var selSOR = isTemplateBuilderMode ? document.getElementById("templateSorType").value : document.getElementById("sorSelect").value; closeModal('specModal'); openAddSorModal('', '', selSOR); }
+function updateSpecSelect(sorType) {
+  specModalSorType = sorType;
+  var sorDropdown = document.getElementById('specModalSorSelect'); if (sorDropdown) sorDropdown.value = sorType;
+  var list = document.getElementById("specList"), si = document.getElementById("specSearch"); if (!list || !si) return; si.value = ""; list.innerHTML = ""; 
+  if (!specOptions[sorType] || specOptions[sorType].length === 0) {
+    list.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);"><div class="spinner" style="width:30px;height:30px;border-width:3px;margin:0 auto 12px;"></div>Loading specifications...</div>';
+    loadSpecificationsForSelectedSor(sorType); return;
+  }
+  var hs = currentTable ? currentTable.closest(".heading-section") : null;
+  var sorted = specOptions[sorType].slice().sort(function(a,b){ var ca=isNaN(a.code)?a.code:parseInt(a.code),cb=isNaN(b.code)?b.code:parseInt(b.code); if(typeof ca==='number'&&typeof cb==='number')return ca-cb; if(typeof ca==='number')return -1; if(typeof cb==='number')return 1; return ca.toString().localeCompare(cb.toString()); });
+  list.innerHTML = '<div class="spec-list-header"><div>\u2714</div><div>Code</div><div>Specification</div></div>';
+  sorted.forEach(function(item) { var oi = specOptions[sorType].indexOf(item); var alreadyAdded = hs ? isSpecAlreadyInHeading(item.code, hs) : false; var row = document.createElement("div"); row.className = "spec-list-row" + (alreadyAdded ? " selected" : ""); row.dataset.index = oi; row.innerHTML = '<input type="checkbox" data-index="' + oi + '"' + (alreadyAdded ? ' disabled checked' : '') + '><div>' + item.code + '</div><div>' + item.spec + '</div>'; list.appendChild(row); });
+}
+function saveSelectedSpecs() {
+  if (!window._activeTablesContainer && !currentTable) { showToast("No section selected!", "warning"); return; }
+  var sorType = specModalSorType;
+  if (!isTemplateBuilderMode) { var mainSor = document.getElementById("sorSelect"); if (mainSor && mainSor.value !== sorType) { mainSor.value = sorType; updateWorkInfoSection(); updateSummaryBoxBasedOnSOR(); showToast('SOR changed to ' + sorType, 'info'); } }
+  else { var tplSor = document.getElementById("templateSorType"); if (tplSor && tplSor.value !== sorType) { tplSor.value = sorType; updateSummaryBoxBasedOnSOR(); } }
+  var list = document.getElementById("specList"), selected = [];
+  Array.from(list.children).forEach(function(row) { if (row.classList.contains('spec-list-header')) return; var cb = row.querySelector("input[type='checkbox']"); if (cb && cb.checked) { var idx = parseInt(cb.dataset.index); if (!isNaN(idx)) selected.push(specOptions[sorType][idx]); } });
+  if (selected.length === 0) { showToast("Select at least one!", "warning"); return; }
+  var hs = currentTable ? currentTable.closest(".heading-section") : (window._activeTablesContainer ? window._activeTablesContainer.closest(".heading-section") : null);
+  var valid = selected.filter(function(s) { return !isSpecAlreadyInHeading(s.code, hs); });
+  if (valid.length === 0) { showToast("Already exist!", "warning"); closeModal('specModal'); return; }
+  if (isChangingSpec && window._tableToChangeSpec) {
+    var sp = valid[0], table = window._tableToChangeSpec, sc = table.querySelector(".spec-row td.toggle-collapse");
+    if (sc) sc.innerHTML = "<b>(" + sp.code + ")</b> \u2014 " + sp.spec.replace(/\n/g, "<br>");
+    var r1r = table.querySelector(".rate1"); if (r1r) r1r.textContent = "@ Rs " + parseFloat(sp.rate1).toFixed(2) + " / " + sp.unit;
+    var r2r = table.querySelector(".rate2"); if (r2r) r2r.textContent = "Unskilled @ Rs " + parseFloat(sp.rate2).toFixed(2) + " / " + sp.unit;
+    var showU = sorType !== "R.E.S. 11-04-2022", ur = table.querySelector(".unskilled-row"); if (ur) ur.style.display = showU ? "" : "none";
+    if (valid.length > 1) { for (var vi = 1; vi < valid.length; vi++) addTable(valid[vi].code, valid[vi].spec, valid[vi].rate1, valid[vi].rate2, valid[vi].unit, window._activeTablesContainer); }
+    showToast("Changed to (" + sp.code + ")!", "success"); updateAllTableNumbers(); calc(); closeModal('specModal'); return;
+  }
+  valid.forEach(function(s) { addTable(s.code, s.spec, s.rate1, s.rate2, s.unit, window._activeTablesContainer); });
+  updateAllTableNumbers(); closeModal('specModal'); showToast(valid.length + " specifications added!", "success");
+}
+function onSpecModalSorChange() {
+  var sorDropdown = document.getElementById('specModalSorSelect'); if (!sorDropdown) return;
+  specModalSorType = sorDropdown.value;
+  var si = document.getElementById('specSearch'); if (si) si.value = '';
+  if (!specOptions[specModalSorType] || specOptions[specModalSorType].length === 0) loadSpecificationsForSelectedSor(specModalSorType);
+  updateSpecSelect(specModalSorType);
+}
+function filterSpecs() { var f = document.getElementById("specSearch").value.toLowerCase(); Array.from(document.getElementById("specList").children).forEach(function(item) { if (item.classList.contains('spec-list-header')) return; item.style.display = item.textContent.toLowerCase().includes(f) ? 'grid' : 'none'; }); }
+
+// ====================== ADD/EDIT SPEC MODAL ======================
+function openAddSorModal(rowIndex, sorType, preSelSOR) {
+  editIndex = (rowIndex !== '' && rowIndex !== undefined) ? parseInt(rowIndex) : null;
+  editSorType = sorType || null;
+  var modal = document.getElementById('addSorModal');
+  var sorSelect = document.getElementById('addSorType');
+  var codeInp = document.getElementById('code'), specInp = document.getElementById('addSpecText'), r1Inp = document.getElementById('addRate1'), r2Inp = document.getElementById('addRate2'), unitSel = document.getElementById('addUnit');
+  codeInp.value = ''; specInp.value = ''; r1Inp.value = ''; r2Inp.value = ''; unitSel.value = '';
+  document.getElementById('specM40').value = 0; document.getElementById('specM20').value = 0; document.getElementById('specM10').value = 0; document.getElementById('specCement').value = 0; document.getElementById('specSand').value = 0; document.getElementById('specBrick').value = 0;
+  if (editIndex !== null && editSorType !== null) {
+    sorSelect.value = editSorType; sorSelect.disabled = true;
+    var specList = specOptions[editSorType] || [];
+    var specData = specList[editIndex];
+    if (specData) {
+      codeInp.value = specData.code || ''; specInp.value = specData.spec || ''; r1Inp.value = specData.rate1 || ''; r2Inp.value = specData.rate2 || ''; unitSel.value = specData.unit || '';
+      document.getElementById('specM40').value = specData.m40 || 0; document.getElementById('specM20').value = specData.m20 || 0; document.getElementById('specM10').value = specData.m10 || 0; document.getElementById('specCement').value = specData.cement || 0; document.getElementById('specSand').value = specData.sand || 0; document.getElementById('specBrick').value = specData.brick || 0;
+    }
+  } else { sorSelect.value = sorType || preSelSOR || ''; sorSelect.disabled = false; }
+  openModal('addSorModal');
+  setTimeout(function() { specInp.focus(); }, 100);
+}
+function closeAddSorModal() { closeModal('addSorModal'); }
+function saveNewSpec() {
+  var sorType = document.getElementById('addSorType').value;
+  var code = document.getElementById('code').value.trim(), spec = document.getElementById('addSpecText').value.trim();
+  var rate1 = parseFloat(document.getElementById('addRate1').value) || 0, rate2 = parseFloat(document.getElementById('addRate2').value) || 0, unit = document.getElementById('addUnit').value;
+  var m40 = parseFloat(document.getElementById('specM40').value) || 0, m20 = parseFloat(document.getElementById('specM20').value) || 0, m10 = parseFloat(document.getElementById('specM10').value) || 0;
+  var cement = parseFloat(document.getElementById('specCement').value) || 0, sand = parseFloat(document.getElementById('specSand').value) || 0, brick = parseFloat(document.getElementById('specBrick').value) || 0;
+  var materials = { m40: m40, m20: m20, m10: m10, cement: cement, sand: sand, brick: brick };
+  if (!sorType || !code || !spec || !unit) { showToast("Please fill all required fields!", "warning"); return; }
+  showAppLoading('Saving Specification...');
+  if (editIndex !== null && editSorType !== null) {
+    google.script.run.withSuccessHandler(function(res) { hideAppLoading(); showToast("Specification updated successfully!", "success"); closeAddSorModal(); loadSpecificationsFromSheets(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).updateSpecification(editSorType, editIndex, code, spec, rate1, rate2, unit, materials);
+  } else {
+    google.script.run.withSuccessHandler(function(res) { hideAppLoading(); showToast("Specification added successfully!", "success"); closeAddSorModal(); loadSpecificationsFromSheets(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).addSpecification(sorType, code, spec, rate1, rate2, unit, materials);
+  }
+}
+function editSpec(type,index) { var item=specOptions[type][index]; document.getElementById("addSorType").value=type; document.getElementById("addSorType").disabled=true; document.getElementById("code").value=item.code; document.getElementById("addSpecText").value=item.spec; document.getElementById("addRate1").value=item.rate1; document.getElementById("addRate2").value=item.rate2; document.getElementById("addUnit").value=item.unit; editIndex=index; editSorType=type; openModal('addSorModal'); }
+function deleteSpec(type,index) { showConfirm("Delete this specification?",function(){google.script.run.withSuccessHandler(function(){loadSpecificationsFromSheets();showToast("Deleted!","success");}).deleteSpecification(type,index);}); }
+
+// ====================== COLLECT TABLE DATA ======================
+function collectTableData(table) {
+  var specRow=table.querySelector(".spec-row"),specTextEl=specRow?specRow.querySelector("td.toggle-collapse"):null;
+  var rawHtml = specTextEl ? specTextEl.innerHTML.trim() : '';
+  var tempDiv = document.createElement('div'); tempDiv.innerHTML = rawHtml;
+  var code = ''; var bTag = tempDiv.querySelector('b');
+  if (bTag) { var codeMatch = bTag.textContent.match(/^\(([^)]+)\)/); if (codeMatch) code = codeMatch[1]; bTag.remove(); }
+  var spec = tempDiv.innerHTML.trim();
+  spec = spec.replace(/^[\u2014\-]\s*/, '').trim(); spec = spec.replace(/\n/g, '<br>');
+  var r1Text=table.querySelector(".rate1")?table.querySelector(".rate1").textContent:"",r2Text=table.querySelector(".rate2")?table.querySelector(".rate2").textContent:"";
+  var rate1=extractRate(r1Text),rate2=extractRate(r2Text),unitMatch=r1Text.match(/\/\s*(\S+)$/),unit=unitMatch?unitMatch[1]:'';
+  var measurements=[],inDeduction=false;
+  table.querySelectorAll("tbody tr").forEach(function(row){
+    if(row.classList.contains("spec-row"))return; if(row.querySelector("th"))return; if(row.querySelector(".netQty"))return; if(row.querySelector(".rate1"))return;
+    if(row.classList.contains("deduction-title")){inDeduction=true;return;}
+    var nc=row.querySelector(".no");if(!nc)return;
+    var desc=row.querySelector("td:nth-child(2)")?row.querySelector("td:nth-child(2)").textContent.trim():'';
+    var allTds=row.querySelectorAll('td');
+    var remark=allTds.length>=9?allTds[8].textContent.trim():'';
+    measurements.push({ desc:desc, no:nc.textContent.trim(), l:row.querySelector(".length")?row.querySelector(".length").textContent.trim():'', b:row.querySelector(".breadth")?row.querySelector(".breadth").textContent.trim():'', h:row.querySelector(".height")?row.querySelector(".height").textContent.trim():'', cf:row.querySelector(".cf")?row.querySelector(".cf").textContent.trim():'', remark:remark, isDeduction:inDeduction });
+  });
+  return{code:code,spec:spec,rate1:rate1,rate2:rate2,unit:unit,measurements:measurements};
+}
+
+// ====================== TEMPLATE SYSTEM ======================
+function loadTemplates() {
+  google.script.run.withSuccessHandler(function(templates){
+    allTemplates = templates || [];
+    document.getElementById('templateCountBadge').textContent = allTemplates.length;
+    if(currentPage === 'templates') {
+      document.querySelectorAll('.tpl-type-tab').forEach(function(tab) { tab.classList.remove('active'); if (tab.getAttribute('data-type') === currentTemplateType) tab.classList.add('active'); });
+      var createBtn = document.getElementById('createTemplateBtn');
+      if (createBtn) { if (currentTemplateType === 'ST') createBtn.style.display = (currentUser && (currentUser.type === "Owner" || currentUser.type === "Admin")) ? '' : 'none'; else createBtn.style.display = ''; }
+      filterTemplateGrid();
+    }
+  }).getTemplates();
+}
+function switchTemplateTypeTab(tab, type) {
+  currentTemplateType = type;
+  document.querySelectorAll('.tpl-type-tab').forEach(function(t) { t.classList.remove('active'); });
+  tab.classList.add('active');
+  var createBtn = document.getElementById('createTemplateBtn');
+  if (createBtn) { if (type === 'ST') createBtn.style.display = (currentUser && (currentUser.type === "Owner" || currentUser.type === "Admin")) ? '' : 'none'; else createBtn.style.display = ''; }
+  filterTemplateGrid();
+}
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function filterTemplateGrid() {
+  var container = document.getElementById('templateTableBody'); if (!container) return;
+  var sorFilter = document.getElementById('templateSorFilter'); var sorVal = sorFilter ? sorFilter.value : '';
+  var filtered = allTemplates.filter(function(t) {
+    if (currentTemplateType && t.templateType !== currentTemplateType) return false;
+    if (sorVal && t.sorType !== sorVal) return false;
+    if (currentTemplateType === 'UT') { if (currentUser && currentUser.type !== 'Owner') { if (t.createdBy !== currentUser.userId) return false; } }
+    return true;
+  });
+  var badge = document.getElementById('templateCountBadge'); if (badge) badge.textContent = filtered.length;
+  var createBtn = document.getElementById('createTemplateBtn');
+  if (createBtn) { if (currentTemplateType === 'ST' && (!currentUser || currentUser.type !== 'Owner')) createBtn.style.display = 'none'; else createBtn.style.display = 'inline-flex'; }
+  if (filtered.length === 0) { container.innerHTML = '<tr><td colspan="8" class="empty-row"><i class="ri-layout-4-line" style="font-size:36px;display:block;margin-bottom:10px;opacity:0.35;"></i>No templates found.</td></tr>'; return; }
+  var html = '';
+  filtered.forEach(function(t, i) {
+    var realIndex = allTemplates.indexOf(t);
+    var secCount = 0, itemCount = 0;
+    if (t.data && t.data.sections) { secCount = t.data.sections.length; t.data.sections.forEach(function(s) { itemCount += (s.specs ? s.specs.length : 0); }); }
+    var typeBadge = t.templateType === 'UT' ? '<span class="template-type-badge my-badge">UT</span>' : '<span class="template-type-badge system-badge">ST</span>';
+    var sorBadge = '<span class="tpl-sor-badge">' + (t.sorType || '--') + '</span>';
+    var actionsHtml = '';
+    if (currentTemplateType === 'UT') {
+      actionsHtml += '<button class="btn-icon" title="Edit" onclick="editTemplate(' + realIndex + ')"><i class="ri-edit-line"></i></button>';
+      actionsHtml += '<button class="btn-icon" title="Delete" onclick="deleteTemplate(' + realIndex + ')" style="color:var(--danger);"><i class="ri-delete-bin-line"></i></button>';
+    } else if (currentTemplateType === 'ST') {
+      if (currentUser && currentUser.type === 'Owner') {
+        actionsHtml += '<button class="btn-icon" title="Edit" onclick="editTemplate(' + realIndex + ')"><i class="ri-edit-line"></i></button>';
+        actionsHtml += '<button class="btn-icon" title="Delete" onclick="deleteTemplate(' + realIndex + ')" style="color:var(--danger);"><i class="ri-delete-bin-line"></i></button>';
+      } else { actionsHtml += '<button class="btn-icon" title="View Only" onclick="viewTemplate(' + realIndex + ')"><i class="ri-eye-line"></i></button>'; }
+    }
+    html += '<tr><td style="text-align:center;font-weight:600;color:var(--text-muted);">' + (i + 1) + '</td><td><div class="tpl-name-cell">' + typeBadge + '<strong style="font-size:14px;">' + escapeHtml(t.name || 'Untitled') + '</strong></div></td><td class="tpl-desc-cell">' + escapeHtml(t.description || '--') + '</td><td>' + sorBadge + '</td><td class="tpl-detail-cell"><span class="tpl-sec-count">' + secCount + '</span> Sec / <span class="tpl-item-count">' + itemCount + '</span> Items</td><td class="tpl-date-cell">' + (t.createdDate || '--') + '</td><td class="tpl-creator-cell">' + escapeHtml(t.createdBy || '--') + '</td><td><div class="action-btns" style="justify-content:center;">' + actionsHtml + '</div></td></tr>';
+  });
+  container.innerHTML = html;
+}
+function viewTemplate(index) {
+  var t = allTemplates[index]; if (!t) return; isTemplateBuilderMode = true; editingTemplateIndex = null;
+  document.getElementById('templateBuilderTitle').textContent = 'View Template (Read Only)';
+  document.getElementById('templateName').value = t.name; document.getElementById('templateName').readOnly = true;
+  document.getElementById('templateDescription').value = t.description || ''; document.getElementById('templateDescription').readOnly = true;
+  document.getElementById('templateSorType').value = t.sorType; document.getElementById('templateSorType').disabled = true;
+  var addSecBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-primary[onclick="addTemplateSection()"]');
+  var saveBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-success[onclick="saveTemplateFromBuilder()"]');
+  if(addSecBtn) addSecBtn.style.display = 'none'; if(saveBtn) saveBtn.style.display = 'none';
+  currentTemplateType = t.templateType || 'UT';
+  if (t.sorType && (!specOptions[t.sorType] || specOptions[t.sorType].length === 0)) loadSpecificationsForSelectedSor(t.sorType);
+  var container = document.getElementById('templateSectionsContainer'); container.innerHTML = '';
+  var sections = t.data && t.data.sections ? t.data.sections : [];
+  sections.forEach(function(sec) {
+    var section = document.createElement("div"); section.className = "heading-section";
+    var displayNum = container.querySelectorAll(".heading-section").length + 1;
+    section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">' + sec.name + '</span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+    container.appendChild(section);
+    var tc = section.querySelector(".tables-container");
+    if (sec.specs && sec.specs.length > 0) sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, t.sorType); });
+    updateAllTableNumbers(); calc();
+  });
+  container.classList.add('read-only-estimate');
+  container.querySelectorAll('[contenteditable="true"]').forEach(function(el) { el.setAttribute('contenteditable', 'false'); });
+  container.querySelectorAll('.open-spec-btn').forEach(function(btn) { btn.style.display = 'none'; });
+  container.querySelectorAll('.delete-heading-btn').forEach(function(btn) { btn.style.display = 'none'; });
+  container.querySelectorAll('.table-action-btns').forEach(function(div) { div.style.display = 'none'; });
+  container.querySelectorAll('.measurement-table th:last-child').forEach(function(th) { th.style.display = 'none'; });
+  container.querySelectorAll('.measurement-table td:last-child').forEach(function(td) { td.style.display = 'none'; });
+  navigateTo('templateBuilder');
+}
+function openTemplateBuilder() {
+  editingTemplateIndex = null; isTemplateBuilderMode = true;
+  if (!currentTemplateType) currentTemplateType = 'UT';
+  document.getElementById('templateBuilderTitle').textContent = 'Create Template';
+  document.getElementById('templateName').readOnly = false; document.getElementById('templateDescription').readOnly = false; document.getElementById('templateSorType').disabled = false;
+  var addSecBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-primary[onclick="addTemplateSection()"]');
+  var saveBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-success[onclick="saveTemplateFromBuilder()"]');
+  if(addSecBtn) addSecBtn.style.display = ''; if(saveBtn) saveBtn.style.display = '';
+  var container = document.getElementById("templateSectionsContainer"); container.classList.remove('read-only-estimate');
+  document.getElementById('templateName').value = ''; document.getElementById('templateDescription').value = ''; document.getElementById('templateSorType').value = '';
+  document.getElementById("templateSectionsContainer").innerHTML = '';
+  navigateTo('templateBuilder');
+}
+function editTemplate(index) {
+  var t = allTemplates[index]; if (!t) return; editingTemplateIndex = index; isTemplateBuilderMode = true;
+  document.getElementById('templateBuilderTitle').textContent = 'Edit Template';
+  document.getElementById('templateName').readOnly = false; document.getElementById('templateDescription').readOnly = false; document.getElementById('templateSorType').disabled = false;
+  var addSecBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-primary[onclick="addTemplateSection()"]');
+  var saveBtn = document.querySelector('#page-templateBuilder .estimate-actions .btn-success[onclick="saveTemplateFromBuilder()"]');
+  if(addSecBtn) addSecBtn.style.display = ''; if(saveBtn) saveBtn.style.display = '';
+  var container = document.getElementById('templateSectionsContainer'); container.classList.remove('read-only-estimate');
+  document.getElementById('templateName').value = t.name;
+  document.getElementById('templateDescription').value = t.description || ''; document.getElementById('templateSorType').value = t.sorType;
+  currentTemplateType = t.templateType || 'UT';
+  if (t.sorType && (!specOptions[t.sorType] || specOptions[t.sorType].length === 0)) loadSpecificationsForSelectedSor(t.sorType);
+  var container2 = document.getElementById('templateSectionsContainer'); container2.innerHTML = '';
+  var sections = t.data && t.data.sections ? t.data.sections : [];
+  sections.forEach(function(sec) {
+    var section = document.createElement("div"); section.className = "heading-section";
+    var displayNum = container2.querySelectorAll(".heading-section").length + 1;
+    section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">' + sec.name + '</span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+    container2.appendChild(section);
+    var tc = section.querySelector(".tables-container");
+    if (sec.specs && sec.specs.length > 0) sec.specs.forEach(function(sp) { createMeasurementTableWithRows(sp, tc, t.sorType); });
+    updateAllTableNumbers(); calc();
+  });
+  navigateTo('templateBuilder');
+}
+function useSystemTemplate(index) {
+  var t = allTemplates[index];
+  if (!t || !t.data || !t.data.sections || t.data.sections.length === 0) { showToast("Template has no sections!", "warning"); return; }
+  showConfirm("Use ST template '" + t.name + "'? It will be copied as UT template.", function() {
+    var userId = currentUser ? currentUser.userId : '';
+    google.script.run.withSuccessHandler(function() { showToast("Template copied to UT Templates!", "success"); currentTemplateType = 'UT'; navigateTo('templates'); loadTemplates(); }).withFailureHandler(function(e) { showToast(e.message, "error"); }).saveTemplate('UT', t.name + ' (Copy)', t.description, t.sorType, t.data, userId);
+  });
+}
+function deleteTemplateAction(index) { showConfirm("Delete this template?", function() { google.script.run.withSuccessHandler(function() { showToast("Deleted!", "success"); loadTemplates(); }).deleteTemplate(index); }); }
+function deleteTemplate(index) { showConfirm("Delete this template?", function() { google.script.run.withSuccessHandler(function() { showToast("Deleted!", "success"); loadTemplates(); }).deleteTemplate(index); }); }
+function saveTemplateFromBuilder() {
+  var name = document.getElementById('templateName').value.trim(), desc = document.getElementById('templateDescription').value.trim(), sorType = document.getElementById('templateSorType').value;
+  if (!name) { showToast("Enter template name!", "warning"); return; } if (!sorType) { showToast("Select SOR type!", "warning"); return; }
+  var sections = [], container = document.getElementById('templateSectionsContainer');
+  container.querySelectorAll(".heading-section").forEach(function(section) {
+    var secName = section.querySelector(".heading-title").textContent.trim(), specs = [];
+    section.querySelectorAll(".measurement-table").forEach(function(table) { specs.push(collectTableData(table)); });
+    if (secName) sections.push({ name: secName, specs: specs });
+  });
+  if (sections.length === 0) { showToast("Add at least one section!", "warning"); return; }
+  var totalSpecs = sections.reduce(function(s, sec) { return s + sec.specs.length; }, 0);
+  if (totalSpecs === 0) { showToast("Add at least one specification!", "warning"); return; }
+  var templateData = { sections: sections };
+  var saveType = currentTemplateType || 'UT';
+  var userId = currentUser ? currentUser.userId : '';
+  if (editingTemplateIndex !== null) {
+    google.script.run.withSuccessHandler(function() { showToast("Template updated as " + saveType + "!", "success"); editingTemplateIndex = null; currentTemplateType = saveType; navigateTo('templates'); loadTemplates(); }).withFailureHandler(function(e) { showToast(e.message, "error"); }).updateTemplate(editingTemplateIndex, saveType, name, desc, sorType, templateData);
+  } else {
+    google.script.run.withSuccessHandler(function() { showToast("Template saved as " + saveType + "!", "success"); currentTemplateType = saveType; navigateTo('templates'); loadTemplates(); }).withFailureHandler(function(e) { showToast(e.message, "error"); }).saveTemplate(saveType, name, desc, sorType, templateData, userId);
+  }
+}
+
+// ====================== LOAD TEMPLATE IN ESTIMATE ======================
+function openLoadTemplateModal() {
+  var sorType = document.getElementById("sorSelect").value;
+  document.getElementById('loadTemplateTypeFilter').value = 'UT';
+  document.getElementById('loadTemplateSorFilter').value = sorType || '';
+  filterLoadTemplateList(); openModal('loadTemplateModal');
+}
+function filterLoadTemplateList() {
+  var tf = document.getElementById('loadTemplateTypeFilter').value;
+  var sf = document.getElementById('loadTemplateSorFilter').value;
+  var workSor = document.getElementById("sorSelect").value;
+  var filtered = allTemplates;
+  if (tf) filtered = filtered.filter(function(t) { return (t.templateType || 'UT') === tf; });
+  if (sf) filtered = filtered.filter(function(t) { return t.sorType === sf; });
+  else if (workSor) filtered = filtered.filter(function(t) { return t.sorType === workSor; });
+  renderLoadTemplateList(filtered);
+}
+function renderLoadTemplateList(filtered) {
+  var listEl = document.getElementById('templateLoadList');
+  if (filtered.length === 0) { listEl.innerHTML = '<div class="empty-state"><i class="ri-layout-4-line"></i><p>No templates found for this filter.</p></div>'; return; }
+  listEl.innerHTML = filtered.map(function(t) {
+    var oi = allTemplates.indexOf(t);
+    var ts = (t.data && t.data.sections ? t.data.sections : []).reduce(function(s, sec) { return s + (sec.specs ? sec.specs.length : 0); }, 0);
+    var typeTag = (t.templateType === 'ST') ? '<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;">ST</span>' : '<span style="background:#ede9fe;color:#4f46e5;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;">UT</span>';
+    return '<div class="template-load-item" onclick="applyTemplate(' + oi + ')"><div class="tli-info"><h4>' + (t.name || '') + ' ' + typeTag + '</h4><span class="tli-sub">' + (t.sorType || '') + ' \u00B7 ' + (t.data && t.data.sections ? t.data.sections.length : 0) + ' Sections \u00B7 ' + ts + ' Items' + (t.description ? ' \u00B7 ' + t.description : '') + '</span></div><i class="ri-arrow-right-circle-line" style="font-size:24px;color:var(--primary);flex-shrink:0;"></i></div>';
+  }).join('');
+}
+function applyTemplate(templateIndex) {
+  var t = allTemplates[templateIndex];
+  if (!t) return;
+  if (!t.data || !t.data.sections || t.data.sections.length === 0) { 
+    showToast("Template has no sections!", "warning"); return; 
+  }
+  
+  // ✅ SOR Type अपडेट करें ताकि Summary और Tables सही बनें
+  if (t.sorType) {
+    var sorSelect = document.getElementById("sorSelect");
+    var tplSorSelect = document.getElementById("templateSorType");
+    if (sorSelect) sorSelect.value = t.sorType;
+    if (tplSorSelect) tplSorSelect.value = t.sorType;
+    updateSummaryBoxBasedOnSOR();
+  }
+  
+  var sorType = t.sorType || document.getElementById("sorSelect").value;
+  
+  // ✅ अगर Valuation Mode में हैं
+  if (isValuationMode) {
+    isTemplateBuilderMode = false;
+    var container = document.getElementById("valuationSectionsContainer");
+    container.innerHTML = '';
+    valSectionCounter = 0;
+    
+    t.data.sections.forEach(function(sec) {
+      addValuationSection();
+      var lastSec = document.querySelector('#valuationSectionsContainer .heading-section:last-child');
+      if (!lastSec) return;
+      
+      var te = lastSec.querySelector('.heading-title');
+      if (te && sec.name) te.textContent = sec.name; 
+      else if (te && sec.title) te.textContent = sec.title;
+      
+      var tc = lastSec.querySelector(".tables-container");
+      if (sec.specs && sec.specs.length > 0) { 
+        sec.specs.forEach(function(sp) { 
+          createMeasurementTableWithRows(sp, tc, sorType); 
+        }); 
+      }
+    });
+    
+    closeModal('loadTemplateModal');
+    calcValuation();
+    showToast("Template '" + t.name + "' applied to Valuation!", "success");
+    return;
+  }
+  
+  // ✅ अगर Normal Estimate मोड में हैं
+  isTemplateBuilderMode = false;
+  var container2 = document.getElementById("headingSectionsContainer");
+  
+  t.data.sections.forEach(function(sec) {
+    sectionCounter++;
+    var section = document.createElement("div");
+    section.className = "heading-section";
+    section.innerHTML = '<div class="heading-header"><span class="heading-title" contenteditable="true">' + (sec.name || sec.title || 'Section') + '</span><div class="heading-actions"><button class="open-spec-btn" title="Add Specification"><i class="ri-add-line"></i></button><button class="delete-heading-btn" title="Delete Section"><i class="ri-delete-bin-line"></i></button></div></div><div class="tables-container"></div>';
+    container2.appendChild(section);
+    var tc = section.querySelector(".tables-container");
+    if (sec.specs && sec.specs.length > 0) { 
+      sec.specs.forEach(function(sp) { 
+        createMeasurementTableWithRows(sp, tc, sorType); 
+      }); 
+    }
+  });
+  
+  updateAllTableNumbers(); 
+  updateSummaryBoxBasedOnSOR(); 
+  calc();
+  closeModal('loadTemplateModal');
+  showToast("Template '" + t.name + "' applied!", "success");
+}
+
+// ====================== WORK DETAIL TABS ======================
+function switchWorkDetailTab(tabName) {
+  if (document.getElementById('wdTabReport') && document.getElementById('wdTabReport').classList.contains('active') && tabName !== 'report') syncProvisionsFromDOM();
+  
+  var workDetailTabs = document.querySelectorAll('#page-workDetail .wd-tab-btn');
+  var workDetailContents = document.querySelectorAll('#page-workDetail .wd-tab-content');
+  
+  workDetailTabs.forEach(function(btn) { btn.classList.remove('active'); if (btn.getAttribute('data-tab') === tabName) btn.classList.add('active'); });
+  workDetailContents.forEach(function(content) { content.classList.remove('active'); });
+  
+  if (tabName === 'estimate') {
+    document.getElementById('wdTabEstimate').classList.add('active');
+    isValuationMode = false;
+  }
+  if (tabName === 'report') { 
+    document.getElementById('wdTabReport').classList.add('active'); 
+    isValuationMode = false;
+    generateReport(); 
+  }
+  if (tabName === 'abstract') { document.getElementById('wdTabAbstract').classList.add('active'); generateAbstractAndBOQ(); }
+  if (tabName === 'boq') { document.getElementById('wdTabBOQ').classList.add('active'); generateAbstractAndBOQ(); }
+  if (tabName === 'drawing') document.getElementById('wdTabDrawing').classList.add('active');
+  
+  // ✅ बटनों को बाहर निकालकर यहाँ रखा गया है ताकि टैब बदलते ही ये सही दिखें
+  var saveBtn = document.getElementById('saveEstimateBtn');
+  var submitBtn = document.getElementById('submitEstimateBtn');
+  
+  if (saveBtn && submitBtn) {
+    if (isValuationMode) {
+      saveBtn.style.display = 'none'; 
+      submitBtn.style.display = 'none';
+    } else {
+      var wk = (currentEstimateWorkIndex !== null && currentEstimateWorkIndex !== undefined) ? allSavedWorks[currentEstimateWorkIndex] : null;
+      
+      if (wk && (wk.Status === 'Estimated' || wk.Status === 'Valuation')) {
+        saveBtn.style.display = 'none'; 
+        submitBtn.style.display = 'none';
+      } else if (wk && wk.Status === 'Draft') {
+        saveBtn.style.display = 'inline-flex'; 
+        submitBtn.style.display = 'inline-flex';
+      } else {
+        saveBtn.style.display = 'inline-flex'; 
+        submitBtn.style.display = 'none';
+      }
+    }
+  }
+  
+  calc();
+}
+function openPrintSelectionModal() {
+  var modal = document.getElementById('printSelectionModal');
+  if (!modal) return;
+  
+  var isValuationPage = document.getElementById('page-valuation').classList.contains('active');
+  var body = modal.querySelector('.modal-body > div');
+  var isPanchayatUser = currentUser && currentUser.type === 'Panchayat'; // ✅ पंचायत यूज़र चेक
+  
+  if (body) {
+    if (isValuationPage) {
+      body.innerHTML = `
+        <p style="margin-bottom: 15px; color: var(--text-muted); font-size: 14px;">Select Valuation documents to print:</p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printEstimate" style="width:18px; height:18px;"> Estimate Data</label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printReport" style="width:18px; height:18px;"> Work Valuation</label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printAbstract" style="width:18px; height:18px;"> Valuation Abstract</label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printBOQ" style="width:18px; height:18px;"> Valuation BOQ</label>
+        </div>
+      `;
+    } else {
+      // ✅ एस्टिमेट पेज के लिए HTML बनाएँ
+      var estimateCheckboxes = `
+        <p style="margin-bottom: 15px; color: var(--text-muted); font-size: 14px;">Select Estimate documents to print:</p>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printEstimate" style="width:18px; height:18px;"> Estimate & Summary</label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printReport" style="width:18px; height:18px;"> Technical Report</label>
+      `;
+      
+      // ✅ अगर यूज़र पंचायत नहीं है, तभी Abstract और BOQ दिखाएँ
+      if (!isPanchayatUser) {
+        estimateCheckboxes += `
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printAbstract" style="width:18px; height:18px;"> Abstract</label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printBOQ" style="width:18px; height:18px;"> BOQ</label>
+        `;
+      }
+      
+      estimateCheckboxes += `
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500;"><input type="checkbox" id="printDrawing" style="width:18px; height:18px;"> Drawing</label>
+        </div>
+      `;
+      
+      body.innerHTML = estimateCheckboxes;
+    }
+  }
+  openModal('printSelectionModal');
+}
+function executeSelectedPrint() {
+  closeModal('printSelectionModal');
+  
+  var printEstimate = document.getElementById('printEstimate') ? document.getElementById('printEstimate').checked : false;
+  var printReport = document.getElementById('printReport') ? document.getElementById('printReport').checked : false;
+  var printAbstract = document.getElementById('printAbstract') ? document.getElementById('printAbstract').checked : false;
+  var printBOQ = document.getElementById('printBOQ') ? document.getElementById('printBOQ').checked : false;
+  var printDrawing = document.getElementById('printDrawing') ? document.getElementById('printDrawing').checked : false;
+  
+  if (!printEstimate && !printReport && !printAbstract && !printBOQ && !printDrawing) { 
+    showToast("Please select at least one page to print.", "warning"); 
+    return; 
+  }
+  
+  var isValuationPage = document.getElementById('page-valuation').classList.contains('active');
+  var activePageSelector = isValuationPage ? '#page-valuation' : '#page-workDetail';
+  
+  var tabsToPrint = [];
+  if (isValuationPage) {
+      if (printEstimate) tabsToPrint.push('wdTabValEstimate');
+      if (printReport) tabsToPrint.push('wdTabValWork');
+      if (printAbstract) tabsToPrint.push('wdTabValAbstract');
+      if (printBOQ) tabsToPrint.push('wdTabValBOQ');
+      if ((printAbstract || printBOQ) && typeof generateValuationAbstractAndBOQ === 'function') generateValuationAbstractAndBOQ();
+  } else {
+      if (printEstimate) tabsToPrint.push('wdTabEstimate');
+      if (printReport) tabsToPrint.push('wdTabReport');
+      if (printAbstract) tabsToPrint.push('wdTabAbstract');
+      if (printBOQ) tabsToPrint.push('wdTabBOQ');
+      if (printDrawing) tabsToPrint.push('wdTabDrawing');
+      calc(); 
+      if (printReport && typeof generateReport === 'function') generateReport(); 
+      if ((printAbstract || printBOQ) && typeof generateAbstractAndBOQ === 'function') generateAbstractAndBOQ();
+  }
+  
+  var allTabs = document.querySelectorAll(activePageSelector + ' .wd-tab-content');
+  var activeTab = document.querySelector(activePageSelector + ' .wd-tab-content.active');
+  if (activeTab) activeTab.classList.remove('active');
+  
+  tabsToPrint.forEach(function(id, index) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.style.setProperty('display', 'block', 'important');
+      el.classList.add('print-this');
+      if (index > 0) el.style.setProperty('page-break-before', 'always', 'important');
+    }
+  });
+  
+  allTabs.forEach(function(el) {
+    if (tabsToPrint.indexOf(el.id) === -1) {
+      el.style.setProperty('display', 'none', 'important');
+    }
+  });
+
+  document.body.classList.add('printing-mode');
+  void document.body.offsetHeight;
+  
+  // ✅ FIX: GAS IFRAME में प्रिंट ब्लॉक होने से बचने के लिए setTimeout का उपयोग करें
+  setTimeout(function() {
+    window.print();
+    
+    // प्रिंट के बाद साफ-सफाई
+    setTimeout(function() {
+      document.body.classList.remove('printing-mode');
+      allTabs.forEach(function(el) {
+        el.style.removeProperty('display');
+        el.style.removeProperty('page-break-before');
+        el.classList.remove('print-this');
+      });
+      if (activeTab) activeTab.classList.add('active'); 
+      else if (allTabs.length > 0) allTabs[0].classList.add('active');
+    }, 500);
+    
+  }, 1000);
+}
+function formatSpecForTable(text) {
+  if (!text) return '';
+  var txtArea = document.createElement('textarea'); txtArea.innerHTML = text; text = txtArea.value; text = text.replace(/\r?\n/g, '<br>'); return text;
+}
+function generateAbstractAndBOQ() {
+  var boqBody = document.getElementById('boqTableBody'), abstractBody = document.getElementById('abstractTableBody');
+  if(!boqBody || !abstractBody) return;
+  var workName = document.getElementById('displayWorkName') ? document.getElementById('displayWorkName').textContent : '--';
+  var panchayat = document.getElementById('displayPanchayat') ? document.getElementById('displayPanchayat').textContent : '--';
+  var janpad = document.getElementById('displayJanpad') ? document.getElementById('displayJanpad').textContent : '--';
+  if(document.getElementById('abstractWorkName')) document.getElementById('abstractWorkName').textContent = workName;
+  if(document.getElementById('abstractPanchayat')) document.getElementById('abstractPanchayat').textContent = panchayat;
+  if(document.getElementById('abstractJanpad')) document.getElementById('abstractJanpad').textContent = janpad;
+  if(document.getElementById('boqWorkName')) document.getElementById('boqWorkName').textContent = workName;
+  if(document.getElementById('boqPanchayat')) document.getElementById('boqPanchayat').textContent = panchayat;
+  if(document.getElementById('boqJanpad')) document.getElementById('boqJanpad').textContent = janpad;
+  var groupedData = {}, order = [];
+  document.querySelectorAll("#headingSectionsContainer .measurement-table").forEach(function(table) {
+    // ✅ यहाँ td.toggle-collapse लिखा गया है
+    var specRow = table.querySelector(".spec-row td.toggle-collapse");
+    if(!specRow) return;
+    var rawHtml = specRow.innerHTML;
+    var specText = rawHtml.replace(/<div>/gi, '\n').replace(/<\/div>/gi, '').replace(/<br\s*\/?>/gi, '\n').replace(/&nbsp;/g, ' ').trim();
+    var tempEl = document.createElement('div'); tempEl.innerHTML = specText; specText = tempEl.innerText.trim();
+    var codeMatch = specText.match(/^\(([^)]+)\)/);
+    var code = codeMatch ? codeMatch[1] : '-';
+    var spec = codeMatch ? specText.replace(/^\([^)]+\)\s*[\u2014\-]\s*/, '').trim() : specText;
+    var r1Text = table.querySelector(".rate1") ? table.querySelector(".rate1").textContent : "";
+    var rate1 = extractRate(r1Text); var unitMatch = r1Text.match(/\/\s*(\S+)$/); var unit = unitMatch ? unitMatch[1] : '-';
+    var nqEl = table.querySelector(".netQty"); var qty = 0;
+    if (nqEl) { var qtyMatch = nqEl.textContent.match(/([\d.]+)/); if (qtyMatch) qty = parseFloat(qtyMatch[1]); }
+    if (groupedData[code]) { groupedData[code].qty += qty; groupedData[code].amount = groupedData[code].qty * groupedData[code].rate; }
+    else { groupedData[code] = { code: code, spec: spec, unit: unit, qty: qty, rate: rate1, amount: qty * rate1 }; order.push(code); }
+  });
+  var items = [], sr = 1;
+  order.forEach(function(code) {
+    var item = groupedData[code];
+    if (item.qty > 0 || item.amount > 0) items.push({ sr: sr++, code: item.code, spec: item.spec, unit: item.unit, qty: item.qty, rate: item.rate, amount: item.amount });
+  });
+  var matTotals = { m40: 0, m20: 0, m10: 0, cement: 0, sand: 0, brick: 0 };
+  var specMap = {};
+  if (typeof specOptions !== 'undefined') { for (var key in specOptions) { if (specOptions[key]) specOptions[key].forEach(function(s) { specMap[s.code] = s; }); } }
+  boqBody.innerHTML = items.map(function(item) {
+    var sData = specMap[item.code] || {};
+    var m40 = item.qty * (sData.m40 || 0), m20 = item.qty * (sData.m20 || 0), m10 = item.qty * (sData.m10 || 0);
+    var cement = item.qty * (sData.cement || 0), sand = item.qty * (sData.sand || 0), brick = item.qty * (sData.brick || 0);
+    matTotals.m40 += m40; matTotals.m20 += m20; matTotals.m10 += m10; matTotals.cement += cement; matTotals.sand += sand; matTotals.brick += brick;
+    return '<tr><td>'+item.sr+'</td><td>'+formatSpecForTable(item.spec)+'</td><td style="text-align:right;">'+item.qty.toFixed(2)+'</td><td style="text-align:center;">'+item.unit+'</td><td style="text-align:right;">'+(m40>0 ? m40.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(m20>0 ? m20.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(m10>0 ? m10.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(cement>0 ? cement.toFixed(2) : '-')+'</td><td style="text-align:right;">'+(sand>0 ? sand.toFixed(3) : '-')+'</td><td style="text-align:right;">'+(brick>0 ? brick.toFixed(0) : '-')+'</td></tr>';
+  }).join('');
+  var footEl = document.getElementById('boqTableFoot');
+  if (items.length > 0) {
+    footEl.style.display = 'table-row-group';
+    footEl.innerHTML = '<tr style="font-weight: 700; background: var(--bg-tertiary); border-top: 2px solid var(--border-color);"><td colspan="4" style="text-align: right;">Total Material Consumption:</td><td style="text-align:right;">'+matTotals.m40.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.m20.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.m10.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.cement.toFixed(2)+'</td><td style="text-align:right;">'+matTotals.sand.toFixed(3)+'</td><td style="text-align:right;">'+matTotals.brick.toFixed(0)+'</td></tr>';
+  } else { footEl.style.display = 'none'; }
+  abstractBody.innerHTML = items.map(function(item) {
+    return '<tr><td>'+item.sr+'</td><td>'+item.code+'</td><td>'+formatSpecForTable(item.spec)+'</td><td style="text-align:center;">'+item.unit+'</td><td style="text-align:right;">'+item.qty.toFixed(2)+'</td><td style="text-align:right;">'+item.rate.toFixed(2)+'</td><td style="text-align:right;">'+item.amount.toFixed(2)+'</td></tr>';
+  }).join('');
+  var totalAmt = items.reduce(function(sum, item) { return sum + item.amount; }, 0);
+  document.getElementById('abstractTotal').textContent = totalAmt.toFixed(2);
+}
+function loadDriveDrawings(selectedId) {
+  var selectEl = document.getElementById('drawingSelect'); if(!selectEl) return;
+  selectEl.innerHTML = '<option value="">-- Loading Files --</option>';
+  google.script.run.withSuccessHandler(function(files) {
+    selectEl.innerHTML = '<option value="">-- Choose File --</option>';
+    files.forEach(function(file) { var opt = document.createElement('option'); opt.value = file.id + '|' + file.mime; opt.textContent = file.name; if (selectedId && file.id === selectedId) opt.selected = true; selectEl.appendChild(opt); });
+  }).getDriveDrawings();
+}
+function previewDriveDrawing(selectEl) {
+  var val = selectEl.value; if (!val) { clearDrawing(); return; }
+  var parts = val.split('|'); var fileId = parts[0], mimeType = parts[1];
+  var imgEl = document.getElementById('drawingPreview'), pdfEl = document.getElementById('drawingPdfPreview');
+  if (mimeType === 'application/pdf') { imgEl.style.display = 'none'; imgEl.src = ''; pdfEl.src = "https://drive.google.com/file/d/" + fileId + "/preview"; pdfEl.style.display = 'block'; }
+  else { pdfEl.style.display = 'none'; pdfEl.src = ''; imgEl.src = "https://drive.google.com/thumbnail?id=" + fileId + "&sz=w1000"; imgEl.style.display = 'inline-block'; }
+  document.getElementById('drawingPreviewContainer').style.display = 'block';
+}
+function clearDrawing() {
+  document.getElementById('drawingPreview').src = ''; document.getElementById('drawingPreview').style.display = 'none';
+  document.getElementById('drawingPdfPreview').src = ''; document.getElementById('drawingPdfPreview').style.display = 'none';
+  document.getElementById('drawingPreviewContainer').style.display = 'none';
+  var sel = document.getElementById('drawingSelect'); if(sel) sel.value = '';
+}
+function getDrawingData() { var sel = document.getElementById('drawingSelect'); var val = sel ? sel.value : ''; if (!val) return ''; return val.split('|')[0]; }
+function syncProvisionsFromDOM() {
+  var provEl = document.getElementById("provisions"); if (!provEl) return;
+  var lis = provEl.querySelectorAll("li"); var provs = [];
+  lis.forEach(function(li) { var text = li.textContent.trim(); if (text && text !== 'N/A') provs.push(text); });
+  if (provs.length > 0) currentEstimateProvisions = provs;
+}
+function generateReport() {
+  var wn = document.getElementById("displayWorkName").textContent;
+  var janpad = document.getElementById("displayJanpad").textContent;
+  var panchayat = document.getElementById("displayPanchayat").textContent;
+  document.getElementById("nameOfWork").textContent = wn;
+  document.getElementById("agency").textContent = "Gram Panchayat " + panchayat;
+  document.getElementById("signatureJanpad5").textContent = janpad;
+  var tsAuth = document.getElementById("ts").value, asAuth = document.getElementById("as").value;
+  document.getElementById("authTS").textContent = tsAuth.indexOf("Janpad") !== -1 ? tsAuth + ", " + janpad : tsAuth;
+  document.getElementById("authAS").textContent = asAuth === "Gram Panchayat" ? asAuth + ", " + panchayat : asAuth.indexOf("Janpad") !== -1 || asAuth.indexOf("Bhind") !== -1 ? asAuth + ", " + janpad : asAuth;
+  var h1 = document.getElementById("head1").value, h2 = document.getElementById("head2").value;
+  document.getElementById("hoa").textContent = h1 && h2 ? h1 + ' + ' + h2 : h1 || h2 || "";
+  var gross = parseFloat(document.getElementById("grossTotalAmt").textContent) || 0;
+  document.getElementById("estCost").textContent = (gross / 100000).toFixed(2) + " Lakh";
+  document.getElementById("rates").textContent = "The Rates are adopted as per S.O.R. of ( Panchayat and Rural Development Department ) Rural Engineering Services, State S.O.R. with effected from 11.04.2022";
+  var provEl = document.getElementById("provisions");
+  var provSource = (currentEstimateProvisions && currentEstimateProvisions.length > 0) ? currentEstimateProvisions : allProvisions;
+  // ✅ contenteditable="true" हटा दिया गया है ताकि कोई एडिट न कर सके
+  if (provSource && provSource.length > 0) { provEl.innerHTML = provSource.map(function(p) { return '<li>' + p + '</li>'; }).join(''); }
+  else { provEl.innerHTML = '<li>N/A</li>'; }
+  
+  // ✅ FIX: अगर एलिमेंट मौजूद है, तभी उसे छिपाएँ (ताकि कोड एरर न करे)
+  var expSec = document.getElementById("expenditureSection");
+  if (expSec) expSec.style.display = "none";
+  
+  document.getElementById("inWords").textContent = "Amount in Words: " + convertNumberToWords(gross);
+  document.getElementById("inHindi").textContent = "\u0930\u093E\u0936\u093F \u0936\u092C\u094D\u0926\u094B\u0902 \u092E\u0947\u0902: " + convertToHindiWords(gross);
+  
+  var saveBtn = document.getElementById('saveEstimateBtn');
+  var submitBtn = document.getElementById('submitEstimateBtn');
+  
+  if (saveBtn && submitBtn) {
+    if (isValuationMode) {
+      saveBtn.style.display = 'none'; 
+      submitBtn.style.display = 'none';
+    } else {
+      var wk = (currentEstimateWorkIndex !== null && currentEstimateWorkIndex !== undefined) ? allSavedWorks[currentEstimateWorkIndex] : null;
+      
+      if (wk && (wk.Status === 'Estimated' || wk.Status === 'Valuation')) {
+        saveBtn.style.display = 'none'; 
+        submitBtn.style.display = 'none';
+      } else if (wk && wk.Status === 'Draft') {
+        saveBtn.style.display = 'inline-flex'; 
+        submitBtn.style.display = 'inline-flex';
+      } else {
+        saveBtn.style.display = 'inline-flex'; 
+        submitBtn.style.display = 'none';
+      }
+    }
+  }
+}
+
+// ====================== UTILITY & MISC ======================
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+  if (id === 'specModal') { isChangingSpec = false; window._tableToChangeSpec = null; currentTable = null; window._activeTablesContainer = null; }
+}
+function autoResize(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight) + 'px'; }
+function updateScrollHint(wrapper) { if (!wrapper) return; if (wrapper.scrollWidth > wrapper.clientWidth) wrapper.classList.add('has-scroll'); else wrapper.classList.remove('has-scroll'); }
+function toggleSummaryRow(btn) { var row = btn.closest("tr"); row.classList.toggle("hidden-row"); var icon = btn.querySelector("i"); icon.className = row.classList.contains("hidden-row") ? "ri-eye-off-line" : "ri-eye-line"; }
+function showHiddenSummaryRows() {
+  var found = false;
+  document.querySelectorAll('#summaryTable .hidden-row').forEach(function(row) { row.classList.remove("hidden-row"); var i = row.querySelector('.btn-icon i'); if (i) i.className = "ri-eye-line"; found = true; });
+  if (found) { calc(); showToast("Hidden rows visible!", "success"); } else showToast("No hidden rows.", "info");
+}
+function formatSafeDate(d) {
+  if (!d) return '--';
+  if (typeof d === 'string') {
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(d.trim())) return d.trim();
+    var isoMatch = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return isoMatch[3] + '/' + isoMatch[2] + '/' + isoMatch[1];
+    var jsDate = new Date(d);
+    if (!isNaN(jsDate.getTime())) { var day = String(jsDate.getDate()).padStart(2, '0'); var month = String(jsDate.getMonth() + 1).padStart(2, '0'); var year = jsDate.getFullYear(); return day + '/' + month + '/' + year; }
+    return d;
+  }
+  if (typeof d === 'object' && d.getTime) {
+    try { var day = String(d.getDate()).padStart(2, '0'); var month = String(d.getMonth() + 1).padStart(2, '0'); var year = d.getFullYear(); return day + '/' + month + '/' + year; } catch (e) {}
+  }
+  return String(d);
+}
+
+// ====================== PASSWORD EXPIRY CHECK ======================
+function checkPasswordExpiry() {
+  var alertEl = document.getElementById('pwdExpiryAlert'), msgEl = document.getElementById('pwdExpiryAlertMsg'), expInput = document.getElementById('settingsPwdExpDate');
+  if (!alertEl || !msgEl || !currentUser || !currentUser.pwdExpDate) { if (alertEl) alertEl.style.display = 'none'; return; }
+  var expDateStr = currentUser.pwdExpDate;
+  if (!expDateStr || expDateStr === '--' || expDateStr.trim() === '') { alertEl.style.display = 'none'; if (expInput) { expInput.style.color = ''; expInput.style.fontWeight = ''; } return; }
+  var parts = expDateStr.split('/'); if (parts.length !== 3) { alertEl.style.display = 'none'; return; }
+  var expDate = new Date(parts[2], parts[1] - 1, parts[0]); expDate.setHours(0, 0, 0, 0);
+  if (isNaN(expDate.getTime())) { alertEl.style.display = 'none'; return; }
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var diffTime = expDate.getTime() - today.getTime();
+  var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  var tickerEl = document.getElementById('pwdExpiryTicker'), tickerContent = document.getElementById('pwdTickerContent');
+  if (diffDays <= 0) {
+    msgEl.innerHTML = "Your password has <strong>EXPIRED</strong>! Please contact administrator immediately.<br><span style='font-size:12px;'>📞 <a href='tel:7067343196' style='color:#991b1b;font-weight:600;'>7067343196</a></span>";
+    alertEl.style.display = 'flex'; if (expInput) { expInput.style.color = 'var(--danger)'; expInput.style.fontWeight = '700'; }
+    if (tickerEl) tickerEl.style.display = 'flex'; document.body.classList.add('ticker-active');
+    if (tickerContent) tickerContent.textContent = "🚨 ALERT: Your password has EXPIRED! Please contact administrator at 7067343196 to reset immediately. \u00A0\u00A0\u00A0";
+  } else if (diffDays <= 3) {
+    var settingsDayText = diffDays + " days", tickerDayText = "in " + diffDays + " days";
+    if (diffDays === 1) { settingsDayText = "TODAY"; tickerDayText = "TODAY (Last Day)"; }
+    else if (diffDays === 2) { settingsDayText = "2 days"; tickerDayText = "in 2 days"; }
+    else if (diffDays === 3) { settingsDayText = "3 days"; tickerDayText = "in 3 days"; }
+    msgEl.innerHTML = "Your password will expire <strong>" + settingsDayText + "</strong>! Please contact administrator to reset your password.<br><span style='font-size:12px;'>📞 <a href='tel:7067343196' style='color:#991b1b;font-weight:600;'>7067343196</a></span>";
+    alertEl.style.display = 'flex'; if (expInput) { expInput.style.color = 'var(--warning)'; expInput.style.fontWeight = '700'; }
+    if (tickerEl) tickerEl.style.display = 'flex'; document.body.classList.add('ticker-active');
+    if (tickerContent) tickerContent.textContent = "⚠️ WARNING: Your password will expire " + tickerDayText + "! Please contact administrator at 7067343196 to reset. \u00A0\u00A0\u00A0\u00A0\u00A0\u00A0";
+    addNotification('warning', 'Your password will expire ' + settingsDayText + '. Please reset it.');
+  } else {
+    alertEl.style.display = 'none'; if (expInput) { expInput.style.color = ''; expInput.style.fontWeight = ''; }
+    if (tickerEl) tickerEl.style.display = 'none'; document.body.classList.remove('ticker-active');
+  }
+}
+
+// ====================== NUMBER TO WORDS ======================
+function convertNumberToWords(amount) {
+  if (isNaN(amount)) return "Invalid amount";
+  var num = Math.floor(parseFloat(amount)); num = Math.round(num / 1000) * 1000;
+  if (num === 0) return "Zero Rupees Only";
+  var a = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten","Eleven","Twelve","Thirteen","Fourteen","Fifteen","Sixteen","Seventeen","Eighteen","Nineteen"];
+  var b = ["","","Twenty","Thirty","Forty","Fifty","Sixty","Seventy","Eighty","Ninety"];
+  function twoDigit(n) { if (n < 20) return a[n]; return (b[Math.floor(n / 10)] + (n % 10 ? " " + a[n % 10] : "")).trim(); }
+  function threeDigit(n) { if (n < 100) return twoDigit(n); var h = Math.floor(n / 100); var rem = n % 100; return a[h] + " Hundred" + (rem ? " " + twoDigit(rem) : ""); }
+  var s = "", ints = num;
+  var cr = Math.floor(ints / 10000000); ints %= 10000000;
+  var lk = Math.floor(ints / 100000); ints %= 100000;
+  var th = Math.floor(ints / 1000); ints %= 1000;
+  var h = Math.floor(ints / 100); ints %= 100;
+  var d = ints;
+  if (cr) s += threeDigit(cr) + " Crore ";
+  if (lk) s += twoDigit(lk) + " Lakh ";
+  if (th) s += twoDigit(th) + " Thousand ";
+  if (h) s += a[h] + " Hundred ";
+  if (d && (cr || lk || th || h)) s += "and ";
+  if (d) s += twoDigit(d);
+  s = s.replace(/\s+/g, " ").trim();
+  return s + " Rupees Only";
+}
+function convertToHindiWords(amount) {
+  if (isNaN(amount)) return "\u0905\u092E\u093E\u0928\u094D\u092F \u0930\u093E\u0936\u093F";
+  var num = Math.floor(parseFloat(amount)); num = Math.round(num / 1000) * 1000;
+  if (num === 0) return "\u0936\u0942\u0928\u094D\u092F \u0930\u0941\u092A\u092F\u0947 \u092E\u093E\u0924\u094D\u0930";
+  var a = ["", "\u090F\u0915", "\u0926\u094B", "\u0924\u0940\u0928", "\u091A\u093E\u0930", "\u092A\u093E\u0901\u091A", "\u091B\u0939", "\u0938\u093E\u0924", "\u0906\u0920", "\u0928\u094C", "\u0926\u0938", "\u0917\u094D\u092F\u093E\u0930\u0939", "\u092C\u093E\u0930\u0939", "\u0924\u0947\u0930\u0939", "\u091A\u094C\u0926\u0939", "\u092A\u0928\u094D\u0926\u0930\u0939", "\u0938\u094B\u0932\u0939", "\u0938\u0924\u094D\u0930\u0939", "\u0905\u0920\u093E\u0930\u0939", "\u0909\u0928\u094D\u0928\u0940\u0938", "\u092C\u0940\u0938", "\u0907\u0915\u094D\u0915\u0940\u0938", "\u092C\u093E\u0907\u0938", "\u0924\u0947\u0907\u0938", "\u091A\u094C\u092C\u0940\u0938", "\u092A\u091A\u094D\u091A\u0940\u0938", "\u091B\u092C\u094D\u092C\u0940\u0938", "\u0938\u0924\u094D\u0924\u093E\u0908\u0938", "\u0905\u091F\u094D\u0920\u093E\u0908\u0938", "\u0909\u0928\u0924\u0940\u0938", "\u0924\u0940\u0938", "\u0907\u0915\u0924\u0940\u0938", "\u092C\u0924\u094D\u0924\u0940\u0938", "\u0924\u0948\u0902\u0924\u0940\u0938", "\u091A\u094C\u0902\u0924\u0940\u0938", "\u092A\u0948\u0902\u0924\u0940\u0938", "\u091B\u0924\u094D\u0924\u0940\u0938", "\u0938\u0948\u0902\u0924\u0940\u0938", "\u0905\u0921\u093C\u0924\u0940\u0938", "\u0909\u0928\u0924\u093E\u0932\u0940\u0938", "\u091A\u093E\u0932\u0940\u0938", "\u0907\u0915\u0924\u093E\u0932\u0940\u0938", "\u092C\u092F\u093E\u0932\u0940\u0938", "\u0924\u0948\u0902\u0924\u093E\u0932\u0940\u0938", "\u091A\u0935\u093E\u0932\u0940\u0938", "\u092A\u0948\u0902\u0924\u093E\u0932\u0940\u0938", "\u091B\u093F\u092F\u093E\u0932\u0940\u0938", "\u0938\u0948\u0902\u0924\u093E\u0932\u0940\u0938", "\u0905\u0921\u093C\u0924\u093E\u0932\u0940\u0938", "\u0909\u0928\u091A\u093E\u0938", "\u092A\u091A\u093E\u0938", "\u0907\u0915\u094D\u092F\u093E\u0935\u0928", "\u092C\u093E\u0935\u0928", "\u0924\u093F\u0930\u092A\u0928", "\u091A\u094C\u092A\u0928", "\u092A\u091A\u092A\u0928", "\u091B\u092A\u094D\u092A\u0928", "\u0938\u0924\u094D\u0924\u093E\u0935\u0928", "\u0905\u091F\u094D\u0920\u093E\u0935\u0928", "\u0909\u0928\u0938\u0920", "\u0938\u093E\u0920", "\u090F\u0915\u0938\u0920", "\u092C\u093E\u0938\u0920", "\u0924\u093F\u0930\u0938\u0920", "\u091A\u094C\u0938\u0920", "\u092A\u091A\u0938\u0920", "\u091B\u093F\u092F\u093E\u0938\u0920", "\u0938\u0921\u093C\u0938\u0920", "\u0905\u0921\u093C\u0938\u0920", "\u0909\u0928\u0924\u0940\u0930", "\u0938\u0924\u094D\u0924\u0930", "\u0907\u0915\u0924\u094D\u0924\u0930", "\u092C\u093E\u0937\u0940", "\u0924\u093F\u0930\u0947\u0924\u0930", "\u091A\u094C\u0924\u094D\u0924\u0930", "\u092A\u091A\u094D\u091A\u0940\u0938", "\u091B\u093F\u092F\u0941\u0924\u094D\u0924\u0930", "\u0938\u0924\u094D\u0924\u093E\u0938\u0940", "\u0905\u0920\u094D\u0920\u0947\u0924\u0930", "\u0909\u0928\u093E\u0938\u0940", "\u0905\u0938\u0940", "\u0907\u0915\u094D\u092F\u093E\u0938\u0940", "\u092C\u0949\u0938\u0940", "\u0924\u093F\u0930\u093E\u0938\u0940", "\u091A\u094C\u0930\u093E\u0938\u0940", "\u092A\u091A\u093E\u0938\u0940", "\u091B\u093F\u092F\u093E\u0938\u0940", "\u0938\u0924\u093E\u0938\u0940", "\u0905\u0920\u093E\u0938\u0940", "\u0928\u094D\u092F\u0942\u0928\u0940", "\u0928\u092C\u094D\u092C\u0947", "\u0907\u0915\u094D\u092F\u093E\u0928\u0935\u0947", "\u092C\u093E\u0928\u0935\u0947", "\u0924\u093F\u0930\u093E\u0928\u0935\u0947", "\u091A\u094C\u0930\u093E\u0928\u0935\u0947", "\u092A\u091A\u094D\u091A\u093E\u0928\u0935\u0947", "\u091B\u093F\u092F\u093E\u0928\u0935\u0947", "\u0938\u0924\u094D\u0924\u093E\u0928\u0935\u0947", "\u0905\u0920\u093E\u0928\u0935\u0947", "\u0928\u093F\u0930\u092F\u093E\u0928\u0935\u0947"];
+  function twoDigit(n) { if (n < 100) return a[n]; return ""; }
+  function threeDigit(n) { if (n < 100) return twoDigit(n); var h = Math.floor(n / 100); var rem = n % 100; var hWord = a[h] + " \u0938\u094C"; return hWord + (rem ? " " + twoDigit(rem) : ""); }
+  var s = "", ints = num;
+  var cr = Math.floor(ints / 10000000); ints %= 10000000;
+  var lk = Math.floor(ints / 100000); ints %= 100000;
+  var th = Math.floor(ints / 1000); ints %= 1000;
+  var h = Math.floor(ints / 100); ints %= 100;
+  var d = ints;
+  if (cr) s += threeDigit(cr) + " \u0915\u0930\u094B\u0921\u093C ";
+  if (lk) s += twoDigit(lk) + " \u0932\u093E\u0916 ";
+  if (th) s += twoDigit(th) + " \u0939\u091C\u093C\u093E\u0930 ";
+  if (h) s += a[h] + " \u0938\u094C ";
+  if (d) s += twoDigit(d);
+  return s.replace(/\s+/g, " ").trim() + " \u0930\u0941\u092A\u092F\u0947 \u092E\u093E\u0924\u094D\u0930";
+}
+
+// ====================== DROPDOWN DATA ======================
+function loadDropdownData() {
+  google.script.run.withSuccessHandler(function (data) {
+    function populate(id, arr) {
+      var el = document.getElementById(id); if (!el) return;
+      el.innerHTML = '<option value="">-- Select --</option>'; 
+      arr.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; el.appendChild(o); });
+    }
+    populate('janpadSelect', data.janpads);
+    populate('ts', data.tsAuthorities);
+    populate('as', data.asAuthorities);
+    populate('head1', data.heads);
+    populate('head2', data.heads);
+    applyRoleRestrictions();
+  }).withFailureHandler(function (e) { console.error("Error loading dropdown data:", e); hideAppLoading(); }).getDropdownData();
+}
+
+// ====================== PAGINATION ======================
+function renderSavedWorksPagination(totalRows, totalPages, startIdx, endIdx) {
+  var container = document.getElementById('savedWorkPagination'); if (!container) return;
+  if (totalRows === 0) { container.innerHTML = ''; return; }
+  var html = '<div class="pagination-info">Showing ' + (startIdx + 1) + '-' + endIdx + ' of ' + totalRows + ' works <select class="page-size-select" onchange="changeSwPageSize(this.value)">';
+  [5, 10, 25, 50, 100].forEach(function(size) { html += '<option value="' + size + '"' + (swRowsPerPage === size ? ' selected' : '') + '>' + size + '/page</option>'; });
+  html += '</select></div><div class="pagination-controls">';
+  html += '<button class="page-btn nav-btn" onclick="goToSwPage(1)"' + (swCurrentPage <= 1 ? ' disabled' : '') + '><i class="ri-skip-back-mini-line"></i></button>';
+  html += '<button class="page-btn nav-btn" onclick="goToSwPage(' + (swCurrentPage - 1) + ')"' + (swCurrentPage <= 1 ? ' disabled' : '') + '><i class="ri-arrow-left-s-line"></i> Prev</button>';
+  var startPage = Math.max(1, swCurrentPage - 2), endPage = Math.min(totalPages, swCurrentPage + 2);
+  if (startPage > 1) { html += '<button class="page-btn" onclick="goToSwPage(1)">1</button>'; if (startPage > 2) html += '<span style="padding:0 4px;color:var(--text-muted);">...</span>'; }
+  for (var i = startPage; i <= endPage; i++) { html += '<button class="page-btn' + (i === swCurrentPage ? ' active' : '') + '" onclick="goToSwPage(' + i + ')">' + i + '</button>'; }
+  if (endPage < totalPages) { if (endPage < totalPages - 1) html += '<span style="padding:0 4px;color:var(--text-muted);">...</span>'; html += '<button class="page-btn" onclick="goToSwPage(' + totalPages + ')">' + totalPages + '</button>'; }
+  html += '<button class="page-btn nav-btn" onclick="goToSwPage(' + (swCurrentPage + 1) + ')"' + (swCurrentPage >= totalPages ? ' disabled' : '') + '>Next <i class="ri-arrow-right-s-line"></i></button>';
+  html += '<button class="page-btn nav-btn" onclick="goToSwPage(' + totalPages + ')"' + (swCurrentPage >= totalPages ? ' disabled' : '') + '><i class="ri-skip-forward-mini-line"></i></button>';
+  html += '</div>'; container.innerHTML = html;
+}
+function goToSwPage(page) { swCurrentPage = page; displaySavedWorks(); var tableEl = document.querySelector('#page-savedWorks .table-responsive'); if (tableEl) tableEl.scrollTop = 0; }
+function changeSwPageSize(size) { swRowsPerPage = parseInt(size) || 10; swCurrentPage = 1; displaySavedWorks(); }
+
+// ====================== LOGIN PARTICLES ANIMATION ======================
+(function() {
+  var canvas = document.getElementById('loginParticles'); if (!canvas) return;
+  var ctx = canvas.getContext('2d'); var particles = []; var animId = null; var w, h;
+  function resize() { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
+  function createParticles() {
+    particles = []; var count = Math.min(Math.floor((w * h) / 18000), 80);
+    for (var i = 0; i < count; i++) { particles.push({ x: Math.random() * w, y: Math.random() * h, r: Math.random() * 1.8 + 0.4, dx: (Math.random() - 0.5) * 0.4, dy: (Math.random() - 0.5) * 0.4, o: Math.random() * 0.5 + 0.15 }); }
+  }
+  function draw() {
+    ctx.clearRect(0, 0, w, h);
+    for (var pi = 0; pi < particles.length; pi++) {
+      var p = particles[pi]; p.x += p.dx; p.y += p.dy;
+      if (p.x < 0) p.x = w; if (p.x > w) p.x = 0; if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = 'rgba(165,180,252,' + p.o + ')'; ctx.fill();
+    }
+    for (var i = 0; i < particles.length; i++) {
+      for (var j = i + 1; j < particles.length; j++) {
+        var dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y, dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 120) { ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y); ctx.strokeStyle = 'rgba(165,180,252,' + (0.08 * (1 - dist / 120)) + ')'; ctx.lineWidth = 0.6; ctx.stroke(); }
+      }
+    }
+    animId = requestAnimationFrame(draw);
+  }
+  function start() { resize(); createParticles(); draw(); }
+  function stop() { if (animId) cancelAnimationFrame(animId); }
+  window.addEventListener('resize', function() { resize(); createParticles(); });
+  var overlay = document.getElementById('loginOverlay');
+  if (overlay) {
+    var observer = new MutationObserver(function() { if (overlay.classList.contains('hidden')) stop(); else start(); });
+    observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    if (!overlay.classList.contains('hidden')) start();
+  }
+})();
+
+// ====================== CAPS LOCK DETECTION ======================
+(function() {
+  var pwInput = document.getElementById('loginPassword'), warning = document.getElementById('capsLockWarning');
+  if (!pwInput || !warning) return;
+  pwInput.addEventListener('keyup', function(e) { if (e.getModifierState) warning.style.display = e.getModifierState('CapsLock') ? 'flex' : 'none'; });
+  pwInput.addEventListener('blur', function() { warning.style.display = 'none'; });
+})();
+
+// ====================== FORGOT PASSWORD HANDLER ======================
+(function() {
+  function handleForgotPassword(e) {
+    if (e && e.preventDefault) e.preventDefault(); if (e && e.stopPropagation) e.stopPropagation();
+    var infoBanner = document.getElementById('forgotInfoBanner'); if (infoBanner) infoBanner.classList.add('show');
+    if (typeof showToast === 'function') showToast('Contact administrator: 7067343196', 'info');
+    return false;
+  }
+  window.handleForgotPassword = handleForgotPassword;
+  var link = document.getElementById('forgotPasswordLink');
+  if (link) { link.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); handleForgotPassword(e); }); }
+})();
+
+// ====================== SUBMIT ESTIMATE ======================
+function submitEstimateFromDetail() {
+  if (currentEstimateWorkIndex === null || currentEstimateWorkIndex === undefined) { showToast("No work selected!", "warning"); return; }
+  var w = allSavedWorks[currentEstimateWorkIndex];
+  if (!w) { showToast("Work not found!", "error"); return; }
+  if (w.Status !== 'Draft') { showToast("Only Draft works can be submitted!", "warning"); return; }
+  calc();
+  var gross = parseFloat(document.getElementById("grossTotalAmt").textContent) || 0;
+  if (gross <= 0) { showToast("Amount is zero. Cannot submit!", "warning"); return; }
+  var estData = collectEstimateData(); var estDataJson = JSON.stringify(estData);
+  showConfirm("Submit this estimate? Once submitted, it cannot be edited.\nAmount: \u20B9" + gross.toFixed(2), function() {
+    showAppLoading('Submitting estimate...');
+    google.script.run.withSuccessHandler(function() {
+      hideAppLoading();
+      showToast("Estimate submitted and saved successfully!", "success");
+      addNotification('success', 'Estimate submitted successfully for approval.');
+      currentEstimateWorkIndex = null;
+      loadAllSavedWorks();
+      navigateTo('savedWorks');
+    }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).saveEstimateData(currentEstimateWorkIndex, estDataJson, "Estimated", gross);
+  });
+}
+function submitEstimateFromModal() {
+  var i = parseInt(document.getElementById("workDetailModal").dataset.currentIndex);
+  closeModal('workDetailModal');
+  var w = allSavedWorks[i];
+  if (!w) { showToast("Work not found!", "error"); return; }
+  if (w.Status !== 'Draft') { showToast("Only Draft works can be submitted!", "warning"); return; }
+  var gross = getWorkAmount(w);
+  if (gross <= 0) { showToast("Amount is zero. Cannot submit!", "warning"); return; }
+  showConfirm("Submit this estimate? Once submitted, it cannot be edited.\nAmount: \u20B9" + gross.toFixed(2), function() {
+    showAppLoading('Submitting estimate...');
+    google.script.run.withSuccessHandler(function() { hideAppLoading(); showToast("Estimate submitted successfully!", "success"); loadAllSavedWorks(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).submitEstimate(i);
+  });
+}
+
+// ====================== OTP VERIFICATION SYSTEM ======================
+function requestOtp() {
+  var userId = document.getElementById('loginUserId').value.trim();
+  if (!userId) { showFieldError('userIdGroup', 'userIdError', 'Enter User ID first to get OTP'); closeForgotInfo(); document.getElementById('loginUserId').focus(); return; }
+  showAppLoading('Sending OTP...'); closeForgotInfo();
+  google.script.run.withSuccessHandler(function(response) {
+    hideAppLoading();
+    if (response.success) { showToast(response.message, "success"); showOtpSection(); }
+  }).withFailureHandler(function(e) { hideAppLoading(); showToast(e.message, "error"); }).sendOtpToUser(userId);
+}
+function showOtpSection() {
+  document.getElementById('userIdGroup').style.display = 'none';
+  document.getElementById('passwordGroup').style.display = 'none';
+  document.querySelector('.login-options').style.display = 'none';
+  document.getElementById('loginBtn').style.display = 'none';
+  document.getElementById('forgotInfoBanner').classList.remove('show');
+  document.getElementById('loginErrorBanner').classList.remove('show');
+  document.getElementById('otpSection').style.display = 'block';
+  document.querySelectorAll('.otp-input').forEach(function(inp) { inp.value = ''; });
+  setTimeout(function() { document.getElementById('otp1').focus(); }, 150);
+}
+function cancelOtp() {
+  document.getElementById('userIdGroup').style.display = '';
+  document.getElementById('passwordGroup').style.display = '';
+  document.querySelector('.login-options').style.display = '';
+  document.getElementById('loginBtn').style.display = '';
+  document.getElementById('otpSection').style.display = 'none';
+}
+function verifyOtp() {
+  var userId = document.getElementById('loginUserId').value.trim();
+  var otp = document.getElementById('otp1').value + document.getElementById('otp2').value + document.getElementById('otp3').value + document.getElementById('otp4').value;
+  if (otp.length !== 4) { showToast("Enter complete 4-digit OTP", "warning"); document.getElementById('otp1').focus(); return; }
+  showAppLoading('Verifying OTP...');
+  google.script.run.withSuccessHandler(function(response) {
+    hideAppLoading();
+    if (response.success) { showToast("✅ " + response.message + " Check your email.", "success"); cancelOtp(); }
+  }).withFailureHandler(function(e) {
+    hideAppLoading();
+    showToast("❌ " + e.message, "error");
+    document.querySelectorAll('.otp-input').forEach(function(inp) { inp.value = ''; });
+    document.getElementById('otp1').focus();
+  }).verifyOtpAndSendPassword(userId, otp);
+}
+
+// ====================== SECURITY & USER MANAGEMENT ======================
+function loadUsersForAdmin() {
+  if (!currentUser || currentUser.type !== 'Owner') { document.getElementById('userTableBody').innerHTML = '<tr><td colspan="9" class="empty-row">Access Denied. Only Owner can view this.</td></tr>'; return; }
+  google.script.run.withSuccessHandler(function(users) {
+    var tb = document.getElementById('userTableBody');
+    if (users.length === 0) { tb.innerHTML = '<tr><td colspan="9" class="empty-row">No users found.</td></tr>'; return; }
+    tb.innerHTML = users.map(function(u) {
+      return '<tr><td>' + (u.index + 1) + '</td><td>' + u.type + '</td><td>' + u.value + '</td><td>' + (u.parentId || '-') + '</td><td><strong>' + u.userId + '</strong></td><td>' + (u.mobile || '-') + '</td><td>' + (u.gmail || '-') + '</td><td>' + u.status + '</td><td><div class="action-btns"><button class="btn-icon" onclick="editUser(' + u.index + ')" title="Edit"><i class="ri-edit-line"></i></button><button class="btn-icon" onclick="deleteUserAction(' + u.index + ')" title="Delete" style="color:var(--danger)"><i class="ri-delete-bin-line"></i></button></div></td></tr>';
+    }).join('');
+  }).getUsersForAdmin();
+}
+function openUserModal() {
+  document.getElementById('userModalTitle').textContent = 'Add New User';
+  ['userType','userValue','userParentId','userUserId','userPassword','userMobile','userGmail','userStatus'].forEach(function(id) { var el = document.getElementById(id); if (el) { el.value = ''; el.disabled = false; } });
+  document.getElementById('userPassword').value = '123456'; document.getElementById('userStatus').value = 'Active';
+  document.getElementById('userModal').dataset.editIndex = '';
+  var resetWrap = document.getElementById('resetDatesBtnWrap'); if (resetWrap) resetWrap.style.display = 'none';
+  openModal('userModal');
+}
+function editUser(index) {
+  google.script.run.withSuccessHandler(function(users) {
+    var u = users[index]; if (!u) return;
+    document.getElementById('userModalTitle').textContent = 'Edit User';
+    document.getElementById('userType').value = u.type;
+    document.getElementById('userValue').value = u.value;
+    document.getElementById('userParentId').value = u.parentId;
+    document.getElementById('userUserId').value = u.userId; document.getElementById('userUserId').disabled = true;
+    document.getElementById('userPassword').value = ''; document.getElementById('userPassword').placeholder = 'Leave blank to keep current password';
+    document.getElementById('userMobile').value = u.mobile;
+    document.getElementById('userGmail').value = u.gmail;
+    document.getElementById('userStatus').value = u.status;
+    document.getElementById('userModal').dataset.editIndex = index;
+    var resetWrap = document.getElementById('resetDatesBtnWrap'); if (resetWrap) resetWrap.style.display = 'block';
+    openModal('userModal');
+  }).getUsersForAdmin();
+}
+function saveUserData() {
+  var index = document.getElementById('userModal').dataset.editIndex;
+  var pwdVal = document.getElementById('userPassword').value.trim();
+  var data = {
+    index: index === '' ? null : parseInt(index),
+    type: document.getElementById('userType').value,
+    value: document.getElementById('userValue').value.trim(),
+    parentId: document.getElementById('userParentId').value.trim(),
+    userId: document.getElementById('userUserId').value.trim(),
+    password: pwdVal !== '' ? pwdVal : undefined,
+    mobile: document.getElementById('userMobile').value.trim(),
+    gmail: document.getElementById('userGmail').value.trim(),
+    status: document.getElementById('userStatus').value
+  };
+  if (!data.type || !data.value || !data.userId) { showToast("Type, Value and User ID are required!", "warning"); return; }
+  showAppLoading('Saving user...');
+  google.script.run.withSuccessHandler(function() { hideAppLoading(); showToast("User saved successfully!", "success"); closeModal('userModal'); loadUsersForAdmin(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).saveUserData(data);
+}
+function resetPasswordDates() {
+  var index = document.getElementById('userModal').dataset.editIndex; if (!index || index === '') { showToast("No user selected!", "warning"); return; }
+  var idx = parseInt(index);
+  showConfirm("Reset password dates to today?", function() {
+    showAppLoading('Resetting dates...');
+    google.script.run.withSuccessHandler(function(result) { hideAppLoading(); showToast("Dates reset! Gen: " + result.genDate + ", Exp: " + result.expDate, "success"); loadUsersForAdmin(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).resetUserPasswordDates(idx);
+  });
+}
+function deleteUserAction(index) {
+  showConfirm("Are you sure you want to delete this user? This cannot be undone.", function() {
+    showAppLoading('Deleting user...');
+    google.script.run.withSuccessHandler(function() { hideAppLoading(); showToast("User deleted!", "success"); loadUsersForAdmin(); }).withFailureHandler(function(e) { hideAppLoading(); showToast("Error: " + e.message, "error"); }).deleteUser(index);
+  });
+}
+
+// ====================== CHANGE PASSWORD SYSTEM ======================
+window.togglePassVis = function(inputId, btn) {
+  var input = document.getElementById(inputId); if (!input) return;
+  var icon = btn ? btn.querySelector('i') : null;
+  if (input.type === 'password') { input.type = 'text'; if (icon) icon.className = 'ri-eye-line'; }
+  else { input.type = 'password'; if (icon) icon.className = 'ri-eye-off-line'; }
+};
+window.requestChangePassOtp = function() {
+  var userId = currentUser ? currentUser.userId : '';
+  var oldPass = document.getElementById('oldPasswordInput').value.trim();
+  if (!userId) { showToast("User session expired. Please login again.", "error"); return; }
+  if (!oldPass) { showToast("Enter your old password!", "warning"); document.getElementById('oldPasswordInput').focus(); return; }
+  showAppLoading('Verifying & Sending OTP to your email...');
+  google.script.run.withSuccessHandler(function(response) {
+    hideAppLoading();
+    if (response.success) {
+      showToast(response.message, "success");
+      document.getElementById('changePassStep1').style.display = 'none';
+      document.getElementById('changePassStep2').style.display = 'block';
+      document.getElementById('changePassOtpInput').value = ''; document.getElementById('newPasswordInput').value = ''; document.getElementById('confirmNewPasswordInput').value = '';
+      document.getElementById('changePassOtpInput').focus();
+    }
+  }).withFailureHandler(function(e) { hideAppLoading(); showToast(e.message, "error"); document.getElementById('oldPasswordInput').focus(); }).requestPasswordChangeOtp(userId, oldPass);
+};
+window.saveNewPassword = function() {
+  var userId = currentUser ? currentUser.userId : '';
+  var otp = document.getElementById('changePassOtpInput').value.trim();
+  var newPass = document.getElementById('newPasswordInput').value.trim();
+  var confirmPass = document.getElementById('confirmNewPasswordInput').value.trim();
+  if (!otp || otp.length !== 4) { showToast("Enter valid 4-digit OTP!", "warning"); return; }
+  if (!newPass) { showToast("Enter new password!", "warning"); return; }
+  if (newPass.length < 6) { showToast("New password must be at least 6 characters!", "warning"); return; }
+  if (newPass !== confirmPass) { showToast("New password and Confirm password do not match!", "error"); return; }
+  showAppLoading('Changing password...');
+  google.script.run.withSuccessHandler(function(response) {
+    hideAppLoading();
+    if (response.success) {
+      showToast(response.message, "success"); window.cancelChangePassword();
+      google.script.run.withSuccessHandler(function(userResponse) {
+        if (userResponse && userResponse.success) {
+          currentUser = userResponse;
+          var rememberMe = localStorage.getItem('measureProUser') ? true : false;
+          var storage = rememberMe ? localStorage : sessionStorage;
+          storage.setItem('measureProUser', JSON.stringify(userResponse));
+          var sPG = document.getElementById('settingsPwdGenDate'), sPE = document.getElementById('settingsPwdExpDate');
+          if (sPG) sPG.value = formatSafeDate(currentUser.pwdGenDate);
+          if (sPE) sPE.value = formatSafeDate(currentUser.pwdExpDate);
+          checkPasswordExpiry();
+        }
+      }).authenticateUser(currentUser.userId, newPass);
+    }
+  }).withFailureHandler(function(e) { hideAppLoading(); showToast(e.message, "error"); }).changeUserPassword(userId, otp, newPass);
+};
+window.cancelChangePassword = function() {
+  document.getElementById('changePassStep1').style.display = 'block';
+  document.getElementById('changePassStep2').style.display = 'none';
+  document.getElementById('oldPasswordInput').value = ''; document.getElementById('changePassOtpInput').value = ''; document.getElementById('newPasswordInput').value = ''; document.getElementById('confirmNewPasswordInput').value = '';
+};
+
+// ====================== VALUATION + ABSTRACT + BOQ ======================
+function _q(el, sel) { var n = el.querySelector(sel); return n ? n.textContent.trim() : ''; }
+function _gv(id) { var e = document.getElementById(id); return e ? e.textContent : ''; }
+</script>
